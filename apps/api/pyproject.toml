@@ -1,0 +1,77 @@
+[build-system]
+requires = ["setuptools==82.0.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scholarmind-api"
+version = "0.1.0"
+description = "Production-oriented arXiv ingestion and grounded paper chat API"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "aiofiles==25.1.0",
+  "aiosqlite==0.22.1",
+  "alembic==1.19.1",
+  "arq==0.28.0",
+  "asyncpg==0.31.0",
+  "boto3==1.43.75",
+  "defusedxml==0.7.1",
+  "fastapi==0.141.1",
+  "httpx==0.28.1",
+  "orjson==3.12.0",
+  "prometheus-client==0.26.0",
+  "pydantic==2.13.4",
+  "pydantic-settings==2.15.0",
+  "pypdf==6.16.1",
+  "PyJWT==2.13.0",
+  "qdrant-client==1.19.0",
+  "redis==5.3.1",
+  "sqlalchemy[asyncio]==2.0.52",
+  "structlog==26.1.0",
+  "tenacity==9.1.4",
+  "uvicorn[standard]==0.52.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "boto3-stubs[s3]==1.43.75",
+  "mypy==2.3.1",
+  "pytest==9.1.1",
+  "pytest-asyncio==1.4.0",
+  "pytest-cov==7.1.0",
+  "ruff==0.16.3",
+  "types-aiofiles==25.1.0.20260518",
+  "types-defusedxml==0.7.0.20260504",
+]
+
+[project.scripts]
+scholarmind-api = "scholarmind.main:run"
+scholarmind-worker = "scholarmind.workers.settings:run"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["scholarmind*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--strict-markers --cov=scholarmind --cov-report=term-missing --cov-fail-under=70"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S", "SIM", "RUF"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106"]
+"alembic/versions/*.py" = ["E501", "I001", "UP007", "UP035"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+exclude = ["alembic"]
