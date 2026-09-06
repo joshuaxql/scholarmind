@@ -99,6 +99,39 @@ class PaperCreateResponse(BaseModel):
     created: bool
 
 
+class BriefingTermResponse(BaseModel):
+    term: str
+    definition: str
+
+
+class PaperBriefingResponse(BaseModel):
+    tldr: str
+    background: str
+    contributions: list[str]
+    methodology: str
+    key_findings: list[str]
+    limitations: list[str]
+    key_terms: list[BriefingTermResponse]
+
+
+class PaperSummaryResponse(BaseModel):
+    paper_id: UUID
+    status: Literal["pending", "ready", "failed"]
+    language: str | None
+    content: PaperBriefingResponse | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class PaperSummaryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    language: Literal["en", "zh"] = "en"
+    refresh: bool = False
+
+
 class ResearchSearchRequest(BaseModel):
     topic: str = Field(min_length=2, max_length=500)
     categories: list[str] = Field(default_factory=list, max_length=8)

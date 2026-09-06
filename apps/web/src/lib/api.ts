@@ -7,6 +7,8 @@ import type {
   Paper,
   PaperCollection,
   PaperCreateResponse,
+  PaperSummary,
+  PaperSummaryInput,
   ResearchAnalysisEvent,
   ResearchCollection,
   ResearchSearch,
@@ -52,6 +54,20 @@ export async function getPaper(id: string): Promise<Paper> {
 
 export async function retryPaper(id: string): Promise<PaperCreateResponse> {
   return request<PaperCreateResponse>(`/papers/${encodeURIComponent(id)}/retry`, { method: "POST" });
+}
+
+export async function getPaperSummary(id: string, signal?: AbortSignal): Promise<PaperSummary> {
+  return request<PaperSummary>(`/papers/${encodeURIComponent(id)}/summary`, { signal });
+}
+
+export async function generatePaperSummary(
+  id: string,
+  input: PaperSummaryInput,
+): Promise<PaperSummary> {
+  return request<PaperSummary>(`/papers/${encodeURIComponent(id)}/summary`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function listConversations(

@@ -21,7 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from scholarmind.db.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from scholarmind.domain.papers import JobStage, JobStatus, MessageRole, PaperStatus
+from scholarmind.domain.papers import JobStage, JobStatus, MessageRole, PaperStatus, SummaryStatus
 from scholarmind.domain.research import ResearchStatus
 
 
@@ -96,6 +96,9 @@ class Paper(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     conversations: Mapped[list[Conversation]] = relationship(
         back_populates="paper", cascade="all, delete-orphan"
     )
+    summary: Mapped[PaperSummary | None] = relationship(
+        back_populates="paper", cascade="all, delete-orphan", uselist=False
+    )
 
 
 class IngestionJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -143,6 +146,27 @@ class PaperChunk(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     embedding_model: Mapped[str | None] = mapped_column(String(500))
 
     paper: Mapped[Paper] = relationship(back_populates="chunks")
+
+
+class PaperSummary(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    __tablename__ = "paper_summaries"
+    __table_args__ = (Index("ix_summaries_owner_paper", "owner_id", "paper_id"),)
+
+    paper_id: Mapped[UUID] = mapped_column(
+        ForeignKey("papers.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    owner_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    language: Mapped[str] = mapped_column(String(8), nullable=False)
+    status: Mapped[SummaryStatus] = mapped_column(
+        Enum(SummaryStatus, native_enum=False, length=16),
+        default=SummaryStatus.READY,
+        nullable=False,
+    )
+    content: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    error_code: Mapped[str | None] = mapped_column(String(128))
+    error_message: Mapped[str | None] = mapped_column(String(1000))
+
+    paper: Mapped[Paper] = relationship(back_populates="summary")
 
 
 class Conversation(UUIDPrimaryKeyMixin, TimestampMixin, Base):

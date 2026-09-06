@@ -37,6 +37,11 @@ class MessageRole(StrEnum):
     ASSISTANT = "assistant"
 
 
+class SummaryStatus(StrEnum):
+    READY = "ready"
+    FAILED = "failed"
+
+
 _ALLOWED_TRANSITIONS: dict[PaperStatus, frozenset[PaperStatus]] = {
     PaperStatus.QUEUED: frozenset({PaperStatus.DOWNLOADING, PaperStatus.FAILED}),
     PaperStatus.DOWNLOADING: frozenset({PaperStatus.PARSING, PaperStatus.FAILED}),

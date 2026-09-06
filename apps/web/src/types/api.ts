@@ -58,6 +58,39 @@ export interface PaperCreateResponse {
   created: boolean;
 }
 
+export interface BriefingTerm {
+  term: string;
+  definition: string;
+}
+
+export interface PaperBriefing {
+  tldr: string;
+  background: string;
+  contributions: string[];
+  methodology: string;
+  key_findings: string[];
+  limitations: string[];
+  key_terms: BriefingTerm[];
+}
+
+export type PaperSummaryStatus = "pending" | "ready" | "failed";
+
+export interface PaperSummary {
+  paper_id: string;
+  status: PaperSummaryStatus;
+  language: string | null;
+  content: PaperBriefing | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface PaperSummaryInput {
+  language: "en" | "zh";
+  refresh: boolean;
+}
+
 export interface PaperCollection {
   items: Paper[];
   total: number;
