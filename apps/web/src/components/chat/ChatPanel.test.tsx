@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { usePaperChat } from "@/hooks/usePaperChat";
@@ -92,5 +92,23 @@ describe("ChatPanel", () => {
     fireEvent.change(textarea, { target: { value: "Explain the proof" } });
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
     expect(send).toHaveBeenCalledWith("Explain the proof");
+  });
+
+  it("sends a question handed over from the briefing card", async () => {
+    mockedUsePaperChat.mockReturnValue({ ...historyState, messages: [], streaming: false, error: null, send, stop });
+    const { rerender } = render(
+      <ChatPanel paperId="paper" title="The Paper" onCitation={vi.fn()} askRequest={null} />,
+    );
+    rerender(
+      <ChatPanel
+        paperId="paper"
+        title="The Paper"
+        onCitation={vi.fn()}
+        askRequest={{ text: "Walk me through the methodology.", nonce: 1 }}
+      />,
+    );
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("Walk me through the methodology."),
+    );
   });
 });

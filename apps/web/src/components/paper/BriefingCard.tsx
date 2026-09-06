@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, Lightbulb, LoaderCircle, RotateCcw, Sparkles } from "lucide-react";
+import {
+  ChevronDown,
+  Lightbulb,
+  LoaderCircle,
+  MessageCircleQuestion,
+  RotateCcw,
+  Sparkles,
+} from "lucide-react";
 import { getPaperSummary, streamPaperSummary } from "@/lib/api";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import type { PaperSummary as PaperSummaryData } from "@/types/api";
@@ -9,15 +16,65 @@ import type { PaperSummary as PaperSummaryData } from "@/types/api";
 interface BriefingSection {
   key: "contributions" | "key_findings" | "limitations";
   title: [string, string];
+  question: [string, string];
 }
 
 const SECTIONS: BriefingSection[] = [
-  { key: "contributions", title: ["Contributions", "主要贡献"] },
-  { key: "key_findings", title: ["Key findings", "关键发现"] },
-  { key: "limitations", title: ["Limitations", "局限性"] },
+  {
+    key: "contributions",
+    title: ["Contributions", "主要贡献"],
+    question: [
+      "Explain each main contribution of this paper in detail.",
+      "请逐条详细解释这篇论文的主要贡献。",
+    ],
+  },
+  {
+    key: "key_findings",
+    title: ["Key findings", "关键发现"],
+    question: [
+      "What are the key findings of this paper and why do they matter?",
+      "这篇论文的关键发现是什么？它们为什么重要？",
+    ],
+  },
+  {
+    key: "limitations",
+    title: ["Limitations", "局限性"],
+    question: [
+      "Discuss the limitations of this paper and how they could be addressed.",
+      "请讨论这篇论文的局限性以及可能的改进方向。",
+    ],
+  },
 ];
 
-export function BriefingCard({ paperId }: { paperId: string }) {
+const TLDR_QUESTION: [string, string] = [
+  "Expand on the summary and walk me through this paper in more detail.",
+  "展开这个摘要，更详细地带我过一遍这篇论文。",
+];
+const BACKGROUND_QUESTION: [string, string] = [
+  "What problem does this paper address, and why does it matter?",
+  "这篇论文解决的是什么问题？为什么重要？",
+];
+const METHODOLOGY_QUESTION: [string, string] = [
+  "Walk me through the methodology of this paper step by step.",
+  "请一步步讲解这篇论文的方法。",
+];
+
+function AskButton({ onAsk, question, label }: { onAsk: (question: string) => void; question: [string, string]; label: [string, string] }) {
+  const { tr } = useI18n();
+  return (
+    <button
+      type="button"
+      className="briefing-ask"
+      onClick={() => onAsk(tr(question[0], question[1]))}
+      aria-label={tr(label[0], label[1])}
+      title={tr(question[0], question[1])}
+    >
+      <MessageCircleQuestion size={12} />
+    </button>
+  );
+}
+
+export function BriefingCard({ paperId, onAsk }: { paperId: string; onAsk?: (question: string) => void }) {
   const { language, tr } = useI18n();
   const [summary, setSummary] = useState<PaperSummaryData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -126,23 +183,41 @@ export function BriefingCard({ paperId }: { paperId: string }) {
           {error && <p className="briefing-error-text">{error}</p>}
           {summary?.content && (
             <>
-              <p className="briefing-tldr">{summary.content.tldr}</p>
+              <p className="briefing-tldr">
+                {summary.content.tldr}
+                {onAsk && (
+                  <AskButton onAsk={onAsk} question={TLDR_QUESTION} label={["Ask about the summary", "就摘要提问"]} />
+                )}
+              </p>
               <div className="briefing-grid">
                 <div className="briefing-block">
-                  <h4>{tr("Background", "研究背景")}</h4>
+                  <h4>
+                    {tr("Background", "研究背景")}
+                    {onAsk && (
+                      <AskButton onAsk={onAsk} question={BACKGROUND_QUESTION} label={["Ask about the background", "就研究背景提问"]} />
+                    )}
+                  </h4>
                   <p>{summary.content.background}</p>
                 </div>
                 <div className="briefing-block">
-                  <h4>{tr("Methodology", "方法概述")}</h4>
+                  <h4>
+                    {tr("Methodology", "方法概述")}
+                    {onAsk && (
+                      <AskButton onAsk={onAsk} question={METHODOLOGY_QUESTION} label={["Ask about the methodology", "就方法提问"]} />
+                    )}
+                  </h4>
                   <p>{summary.content.methodology}</p>
                 </div>
               </div>
-              {SECTIONS.map(({ key, title }) => {
+              {SECTIONS.map(({ key, title, question }) => {
                 const items = summary.content?.[key] ?? [];
                 if (items.length === 0) return null;
                 return (
                   <div className="briefing-block" key={key}>
-                    <h4>{tr(title[0], title[1])}</h4>
+                    <h4>
+                      {tr(title[0], title[1])}
+                      {onAsk && <AskButton onAsk={onAsk} question={question} label={[`Ask about ${title[0].toLowerCase()}`, `就${title[1]}提问`]} />}
+                    </h4>
                     <ul>
                       {items.map((item, index) => <li key={index}>{item}</li>)}
                     </ul>
@@ -155,7 +230,16 @@ export function BriefingCard({ paperId }: { paperId: string }) {
                   <dl className="briefing-terms">
                     {summary.content.key_terms.map((term) => (
                       <div className="briefing-term" key={term.term}>
-                        <dt>{term.term}</dt>
+                        <dt>
+                          {term.term}
+                          {onAsk && (
+                            <AskButton
+                              onAsk={onAsk}
+                              question={[`Explain the term "${term.term}" in detail.`, `请详细解释术语「${term.term}」。`]} 
+                              label={[`Ask about ${term.term}`, `就术语 ${term.term} 提问`]} 
+                            />
+                          )}
+                        </dt>
                         <dd>{term.definition}</dd>
                       </div>
                     ))}

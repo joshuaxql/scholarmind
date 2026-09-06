@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { BookOpen, MessagesSquare } from "lucide-react";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { BriefingCard } from "@/components/paper/BriefingCard";
@@ -12,11 +12,20 @@ export function ReaderWorkspace({ paper }: { paper: Paper }) {
   const { tr } = useI18n();
   const [page, setPage] = useState<number | null>(null);
   const [mobilePane, setMobilePane] = useState<"paper" | "chat">("chat");
+  // Question handed over from the briefing card to the chat panel; the nonce marks each new request.
+  const [askRequest, setAskRequest] = useState<{ text: string; nonce: number } | null>(null);
+  const askNonce = useRef(0);
   const title = paper.title ?? `arXiv:${paper.arxiv_id}`;
 
   function openCitation(citation: Citation) {
     if (citation.page_number) setPage(citation.page_number);
     setMobilePane("paper");
+  }
+
+  function askQuestion(text: string) {
+    askNonce.current += 1;
+    setAskRequest({ text, nonce: askNonce.current });
+    setMobilePane("chat");
   }
 
   return (
@@ -27,10 +36,10 @@ export function ReaderWorkspace({ paper }: { paper: Paper }) {
       </nav>
       <div className={`workspace-grid show-${mobilePane}`}>
         <div className={`reader-pane show-${mobilePane}`}>
-          <BriefingCard paperId={paper.id} />
+          <BriefingCard paperId={paper.id} onAsk={askQuestion} />
           <PdfPane paperId={paper.id} title={title} page={page} />
         </div>
-        <ChatPanel paperId={paper.id} title={title} onCitation={openCitation} />
+        <ChatPanel paperId={paper.id} title={title} onCitation={openCitation} askRequest={askRequest} />
       </div>
     </div>
   );

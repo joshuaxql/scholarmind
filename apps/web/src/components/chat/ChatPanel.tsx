@@ -28,9 +28,11 @@ interface ChatPanelProps {
   paperId: string;
   title: string;
   onCitation: (citation: Citation) => void;
+  /** Question handed over from the briefing card; the nonce marks each new request. */
+  askRequest?: { text: string; nonce: number } | null;
 }
 
-export function ChatPanel({ paperId, title, onCitation }: ChatPanelProps) {
+export function ChatPanel({ paperId, title, onCitation, askRequest }: ChatPanelProps) {
   const { tr } = useI18n();
   const chat = usePaperChat(paperId);
   const { messages, streaming, error, send, stop } = chat;
@@ -42,10 +44,20 @@ export function ChatPanel({ paperId, title, onCitation }: ChatPanelProps) {
   const [query, setQuery] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const handledAskNonce = useRef(0);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (!askRequest || askRequest.nonce === handledAskNonce.current) return;
+    const timer = setTimeout(() => {
+      handledAskNonce.current = askRequest.nonce;
+      if (!streaming && !chat.deleting) void send(askRequest.text);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [askRequest, streaming, chat.deleting, send]);
 
   function submit(event?: FormEvent) {
     event?.preventDefault();
