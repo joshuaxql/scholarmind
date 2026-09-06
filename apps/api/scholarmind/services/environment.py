@@ -96,7 +96,7 @@ class FileSettings(Settings):
 
 
 def _group(key: str) -> str:
-    if key.startswith("LLM_") or key == "MAX_CONTEXT_CHARACTERS":
+    if key.startswith("LLM_") or key.startswith("SUMMARY_") or key == "MAX_CONTEXT_CHARACTERS":
         return "llm"
     if key.startswith("EMBEDDING_"):
         return "embedding"

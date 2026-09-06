@@ -1,7 +1,7 @@
 import { Bot, Database, Globe, Layers, LockKeyhole, SlidersHorizontal, FileDown } from "lucide-react";
 
 export const settingsGroups = [
-  { id: "llm", en: "Language model", zh: "语言模型", icon: Bot, description: ["Configure the model used for answers and topic reports. Set the URL, key and model together, or leave all three empty to use the local implementation.", "用于论文问答和话题报告。接口地址、密钥和模型名称需一起配置；三项均留空时使用本地实现。"] },
+  { id: "llm", en: "Language model", zh: "语言模型", icon: Bot, description: ["Configure the models used for answers, topic reports and paper briefings. Set the URL, key and model together, or leave all three empty to use the local implementation. The briefing model is optional and falls back to the main model when empty.", "用于论文问答、话题报告和论文速览。接口地址、密钥和模型名称需一起配置；三项均留空时使用本地实现。速览模型为可选，留空时沿用主模型。"] },
   { id: "embedding", en: "Embeddings", zh: "嵌入模型", icon: Layers, description: ["Configure semantic retrieval. Changing the model or dimensions requires re-indexing existing papers; until then, retrieval safely falls back within each paper.", "用于语义检索。更换模型或维度后，已有论文需重新建立索引；在此之前会在当前论文内降级检索。"] },
   { id: "research", en: "Topic exploration", zh: "话题探索", icon: Globe, description: ["Control arXiv search, retries and report context. Intervals must be at least 3 seconds; the total timeout limits the entire search.", "管理 arXiv 检索、重试和报告上下文。请求间隔至少 3 秒，总超时限制整次搜索的等待时间。"] },
   { id: "ingestion", en: "Paper reading", zh: "论文阅读", icon: FileDown, description: ["Set download limits, ingestion retries and the maximum question length.", "设置下载限制、论文摄取重试次数和提问长度。"] },
@@ -45,9 +45,11 @@ export const fieldLabels: Record<string, [string, string]> = {
   LLM_BASE_URL: ["API base URL", "接口地址"],
   LLM_API_KEY: ["API key", "API 密钥"],
   LLM_MODEL: ["Model name", "模型名称"],
+  SUMMARY_LLM_MODEL: ["Briefing model name (optional)", "速览模型名称（可选）"],
   LLM_TEMPERATURE: ["Temperature", "生成温度"],
   LLM_MAX_OUTPUT_TOKENS: ["Maximum output tokens", "最大输出 Token 数"],
   MAX_CONTEXT_CHARACTERS: ["Answer context · characters", "问答上下文 · 字符"],
+  SUMMARY_MAX_CONTEXT_CHARACTERS: ["Briefing context · characters", "速览上下文 · 字符"],
   EMBEDDING_BASE_URL: ["API base URL", "接口地址"],
   EMBEDDING_API_KEY: ["API key", "API 密钥"],
   EMBEDDING_MODEL: ["Model name", "模型名称"],
