@@ -16,6 +16,8 @@ import {
 import { ModeSwitch } from "@/components/layout/ModeSwitch";
 import { useWorkspace } from "@/components/layout/WorkspaceShell";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import { MarkdownContent } from "@/components/content/MarkdownContent";
+import { ResizeHandle, useResizablePanel } from "@/components/layout/ResizeHandle";
 import { analyzeResearch, createPaper, getResearch, searchResearch } from "@/lib/api";
 import { researchPreview } from "@/lib/research-preview";
 import type {
@@ -31,6 +33,8 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
   const router = useRouter();
   const { refreshHistory, setActiveResearchId } = useWorkspace();
   const { tr } = useI18n();
+  const columns = useResizablePanel({ storageKey: "research", initial: 40, min: 25, max: 70, unit: "%" });
+  const composer = useResizablePanel({ storageKey: "research-composer", initial: 720, min: 320, max: 1400 });
   const abortRef = useRef<AbortController | null>(null);
   const [topic, setTopic] = useState("");
   const [categories, setCategories] = useState<string[]>([]);
@@ -214,7 +218,7 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
           {!research && <ModeSwitch mode="research" />}
         </section>}
 
-        <form className="research-form" hidden={restoring} onSubmit={handleSubmit}>
+        <form id="topic-composer" style={composer.style} className="research-form" hidden={restoring} onSubmit={handleSubmit}>
           <div className="research-query-row">
             <label className="sr-only" htmlFor="research-topic">{tr("Research topic", "研究话题")}</label>
             <input
@@ -279,6 +283,7 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
             </label>
           </div>
           </fieldset>
+          <ResizeHandle controls="topic-composer" {...composer.handleProps} label={tr("Resize topic input", "调整话题输入区宽度")} className="resize-edge-right page-resize" factor={2} />
         </form>
 
         {(error || restoreFailed) && <div className="research-error" role="alert"><TriangleAlert size={17} /> {error ?? tr("Could not load this exploration", "无法加载这次探索")}</div>}
@@ -298,8 +303,8 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
         </div>}
 
         {research && (
-          <section className="research-workspace">
-            <div className="research-corpus">
+          <section style={columns.style} className="research-workspace">
+            <div id="research-sources" className="research-corpus">
               <div className="research-section-head">
                 <div><span>{tr("Corpus", "语料")} / {String(research.results.length).padStart(2, "0")}</span><h2>{tr("Source papers", "来源论文")}</h2></div>
                 {research.cached && <small>{tr("Cached scan", "缓存结果")}</small>}
@@ -318,11 +323,11 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
                         <span>{paper.primary_category ?? paper.categories[0] ?? "arXiv"}</span>
                         <span>arXiv:{paper.arxiv_id}</span>
                       </div>
-                      <h3>{paper.title}</h3>
+                      <h3><MarkdownContent inline>{paper.title}</MarkdownContent></h3>
                       <p className="research-authors">{formatAuthors(paper.authors, tr("Authors unavailable", "作者信息不可用"))}</p>
                       <details>
                         <summary>{tr("Read abstract", "查看摘要")}</summary>
-                        <p>{paper.abstract}</p>
+                        <p><MarkdownContent inline>{paper.abstract}</MarkdownContent></p>
                       </details>
                       <div className="research-paper-actions">
                         <a href={paper.abstract_url} target="_blank" rel="noreferrer">
@@ -338,7 +343,7 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
                 ))}
               </div>
             </div>
-
+            <ResizeHandle {...columns.handleProps} label={tr("Resize sources and report", "调整来源论文与报告宽度")} controls="research-sources" className="research-resize" />
             <aside className="research-report">
               <div className="research-section-head report-head">
                 <div><span>{tr("Synthesis", "综合分析")} / AI</span><h2>{tr("Field brief", "领域简报")}</h2></div>
@@ -350,8 +355,8 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
                   ? tr("Generating · draft, awaiting validation", "正在生成 · 草稿待校验")
                   : tr("Incomplete draft · generate again to finish", "未完成草稿 · 可重新生成")}</p>
                 {researchPreview(reportOutput).map((part, index) => ["name", "title", "period"].includes(part.key)
-                  ? <h3 key={index}>{part.text}</h3>
-                  : <p key={index}>{part.text}</p>)}
+                  ? <h3 key={index}><MarkdownContent inline>{part.text}</MarkdownContent></h3>
+                  : <p key={index}><MarkdownContent inline>{part.text}</MarkdownContent></p>)}
               </div>}
               {research.report && <ReportView report={research.report} />}
               {!research.report && !analyzing && <div className="report-pending"><p>{tr("Your source papers are ready. Generate a report to explore the findings.", "来源论文已就绪，生成报告以查看研究结论。")}</p><button type="button" onClick={() => void retryReport()}>{tr("Generate report", "生成报告")}</button></div>}
@@ -380,14 +385,14 @@ function ReportView({ report }: { report: ResearchReport }) {
     <div className="report-content">
       <section className="report-overview">
         <span>{tr("EXECUTIVE SIGNAL", "核心结论")}</span>
-        <p>{report.overview}</p>
+        <p><MarkdownContent inline>{report.overview}</MarkdownContent></p>
       </section>
 
       <ReportSection number="01" title={tr("Research currents", "研究主线")}>
         <div className="theme-list">
           {report.themes.map((theme) => (
             <article key={theme.name}>
-              <h3>{theme.name}</h3><p>{theme.summary}</p><CitationLinks ids={theme.paper_ids} />
+              <h3><MarkdownContent inline>{theme.name}</MarkdownContent></h3><p><MarkdownContent inline>{theme.summary}</MarkdownContent></p><CitationLinks ids={theme.paper_ids} />
             </article>
           ))}
         </div>
@@ -397,7 +402,7 @@ function ReportView({ report }: { report: ResearchReport }) {
         <div className="timeline-list">
           {report.timeline.map((item, index) => (
             <article key={`${item.period}-${index}`}>
-              <time>{item.period}</time><div><p>{item.development}</p><CitationLinks ids={item.paper_ids} /></div>
+              <time>{item.period}</time><div><p><MarkdownContent inline>{item.development}</MarkdownContent></p><CitationLinks ids={item.paper_ids} /></div>
             </article>
           ))}
         </div>
@@ -408,7 +413,7 @@ function ReportView({ report }: { report: ResearchReport }) {
           {report.bottlenecks.map((item) => (
             <article key={item.title}>
               <span className={`evidence-${item.evidence_type}`}>{item.evidence_type === "explicit" ? tr("explicit", "明确") : tr("inferred", "推断")}</span>
-              <h3>{item.title}</h3><p>{item.description}</p><CitationLinks ids={item.paper_ids} />
+              <h3><MarkdownContent inline>{item.title}</MarkdownContent></h3><p><MarkdownContent inline>{item.description}</MarkdownContent></p><CitationLinks ids={item.paper_ids} />
             </article>
           ))}
         </div>
@@ -417,12 +422,12 @@ function ReportView({ report }: { report: ResearchReport }) {
       <ReportSection number="04" title={tr("Openings", "研究机会")}>
         <div className="opportunity-list">
           {report.opportunities.map((item, index) => (
-            <article key={item.title}><b>{String(index + 1).padStart(2, "0")}</b><div><h3>{item.title}</h3><p>{item.rationale}</p><CitationLinks ids={item.paper_ids} /></div></article>
+            <article key={item.title}><b>{String(index + 1).padStart(2, "0")}</b><div><h3><MarkdownContent inline>{item.title}</MarkdownContent></h3><p><MarkdownContent inline>{item.rationale}</MarkdownContent></p><CitationLinks ids={item.paper_ids} /></div></article>
           ))}
         </div>
       </ReportSection>
 
-      <p className="report-method"><TriangleAlert size={13} /> {report.methodology}</p>
+      <p className="report-method"><TriangleAlert size={13} /> <MarkdownContent inline>{report.methodology}</MarkdownContent></p>
     </div>
   );
 }

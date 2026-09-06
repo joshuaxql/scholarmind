@@ -73,6 +73,17 @@ describe("ResearchDesk", () => {
     expect(mockedSearch).not.toHaveBeenCalled();
   });
 
+  it("renders math in report fields and source abstracts with working source links", async () => {
+    mockedGetResearch.mockResolvedValue({ ...result, results: [{ ...result.results[0], abstract: String.raw`Complexity \(O(n^2)\).` }], report: { ...result.report!, overview: String.raw`\[A=QK^T\]` } });
+    const { container } = render(<ResearchDesk searchId="research-1" />);
+    await screen.findByText("A grounded multimodal system");
+    expect(container.querySelector(".research-report .katex-display")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Read abstract"));
+    expect(container.querySelector("details .katex")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "[P1]" })[0]).toHaveAttribute("href", "#paper-P1");
+    expect(screen.getByRole("separator", { name: "Resize sources and report" })).toBeInTheDocument();
+  });
+
   it("searches a topic and renders a cited field report", async () => {
     mockedSearch.mockResolvedValue(result);
     render(<ResearchDesk />);

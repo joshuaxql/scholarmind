@@ -23,6 +23,16 @@ beforeEach(() => {
 });
 
 describe("ChatPanel", () => {
+  it("renders formulas from saved answers alongside page citations", () => {
+    const citation = { source_id: "S1", chunk_id: "c1", page_number: 3, section: "Theory", score: 1, excerpt: "Formula" };
+    const onCitation = vi.fn();
+    mockedUsePaperChat.mockReturnValue({ ...historyState, messages: [{ id: "a", role: "assistant", content: String.raw`\[E=mc^2\] [S1]`, citations: [citation] }], streaming: false, error: null, send, stop });
+    const { container } = render(<ChatPanel paperId="paper" title="The Paper" onCitation={onCitation} />);
+    expect(container.querySelector(".message-content .katex-display")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /p\. 3/ }));
+    expect(onCitation).toHaveBeenCalledWith(citation);
+  });
+
   it("offers evidence-oriented starter questions", () => {
     mockedUsePaperChat.mockReturnValue({ ...historyState, messages: [], streaming: false, error: null, send, stop });
     render(<ChatPanel paperId="paper" title="The Paper" onCitation={vi.fn()} />);
@@ -80,6 +90,10 @@ describe("ChatPanel", () => {
     render(<ChatPanel paperId="paper" title="The Paper" onCitation={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Conversation history" }));
+    fireEvent.keyDown(screen.getByRole("separator", { name: "Resize conversation history width" }), { key: "ArrowLeft" });
+    expect(screen.getByRole("separator", { name: "Resize conversation history width" })).toHaveAttribute("aria-valuenow", "350");
+    fireEvent.keyDown(screen.getByRole("separator", { name: "Resize conversation history height" }), { key: "ArrowDown" });
+    expect(screen.getByRole("separator", { name: "Resize conversation history height" })).toHaveAttribute("aria-valuenow", "370");
     fireEvent.click(screen.getByRole("button", { name: /^Explain the proof/i }));
 
     expect(selectConversation).toHaveBeenCalledWith("conversation-1");

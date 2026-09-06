@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { WorkspaceShell } from "@/components/layout/WorkspaceShell";
+import "katex/dist/katex.min.css";
 import "./globals.css";
 
 export const metadata: Metadata = {

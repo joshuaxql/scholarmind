@@ -8,6 +8,7 @@ import { retryPaper } from "@/lib/api";
 import { usePaper } from "@/hooks/usePaper";
 import { useState } from "react";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import { MarkdownContent } from "@/components/content/MarkdownContent";
 import type { PaperStatus } from "@/types/api";
 
 export function PaperScreen({ paperId }: { paperId: string }) {
@@ -45,7 +46,7 @@ export function PaperScreen({ paperId }: { paperId: string }) {
             {paper.published_at && <span><CalendarDays size={12} /> {new Intl.DateTimeFormat(language === "zh" ? "zh-CN" : "en", { year: "numeric", month: "short" }).format(new Date(paper.published_at))}</span>}
             <span className={`status-dot status-${paper.status}`}>{paperStatusLabel(paper.status, language)}</span>
           </div>
-          <h1>{paper.title ?? (processing ? tr("Preparing paper metadata…", "正在准备论文元数据…") : `arXiv:${paper.arxiv_id}`)}</h1>
+          <h1><MarkdownContent inline>{paper.title ?? (processing ? tr("Preparing paper metadata…", "正在准备论文元数据…") : `arXiv:${paper.arxiv_id}`)}</MarkdownContent></h1>
           {paper.authors.length > 0 && <p>{paper.authors.join(" · ")}</p>}
         </div>
         <a className="arxiv-link" href={paper.abstract_url} target="_blank" rel="noreferrer"><span>arXiv</span><ExternalLink size={14} /></a>

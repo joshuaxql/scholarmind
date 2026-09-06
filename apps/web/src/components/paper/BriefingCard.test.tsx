@@ -55,6 +55,19 @@ beforeEach(() => {
 });
 
 describe("BriefingCard", () => {
+  it("renders formulas in briefing fields and retains its resize control after collapsing", async () => {
+    mockedGet.mockResolvedValue({ ...readySummary, content: { ...readySummary.content!, methodology: String.raw`\[QK^T/\sqrt{d_k}\]` } });
+    const { container } = render(<BriefingCard paperId="paper-1" />);
+    await screen.findByText("The paper studies attention scaling.");
+    expect(container.querySelector(".briefing-body .katex-display")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("separator"), { key: "ArrowDown" });
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Paper briefing" }));
+    expect(screen.queryByRole("separator")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Paper briefing" }));
+    expect(screen.getByRole("separator")).toHaveAttribute("aria-valuenow", "250");
+  });
+
   it("renders a ready briefing without regenerating", async () => {
     mockedGet.mockResolvedValue(readySummary);
     render(<BriefingCard paperId="paper-1" />);

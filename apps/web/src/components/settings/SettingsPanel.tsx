@@ -3,12 +3,14 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Check, LoaderCircle, LockKeyhole, RotateCcw, Search, X } from "lucide-react";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import { ResizeHandle, useResizablePanel } from "@/components/layout/ResizeHandle";
 import { ApiError, getEnvironmentSettings, saveEnvironmentSettings } from "@/lib/api";
 import type { EnvironmentField, EnvironmentSettings } from "@/types/api";
 import { fieldLabels, settingsGroups } from "./catalog";
 
 export function SettingsPanel() {
   const { tr } = useI18n();
+  const categories = useResizablePanel({ storageKey: "settings", initial: 178, min: 140, max: 320 });
   const [settings, setSettings] = useState<EnvironmentSettings | null>(null);
   const [updates, setUpdates] = useState<Record<string, string>>({});
   const [group, setGroup] = useState<string>("llm");
@@ -84,11 +86,12 @@ export function SettingsPanel() {
   return (
     <div className="settings-page">
       <div className="settings-heading"><div><h1>{tr("Settings", "设置")}</h1><p>{tr("Make this workspace yours.", "按你的习惯配置工作区。")}</p></div><span className="settings-file">.env</span></div>
-      <div className="settings-layout">
-        <nav className="settings-nav" aria-label={tr("Settings categories", "设置分类")}>
+      <div style={categories.style} className="settings-layout">
+        <nav id="settings-categories" className="settings-nav" aria-label={tr("Settings categories", "设置分类")}>
           {settingsGroups.map(({ id, en, zh, icon: Icon }) => <button key={id} type="button" className={!search && group === id ? "active" : ""} aria-current={!search && group === id ? "page" : undefined} onClick={() => { setGroup(id); setQuery(""); }}><Icon size={16} /><span>{tr(en, zh)}</span>{settings?.fields.some((field) => field.group === id && field.key in updates) && <i aria-label={tr("Unsaved changes", "未保存")} />}</button>)}
           <p><LockKeyhole size={13} />{tr("Stored on this computer", "配置保存在本机")}</p>
         </nav>
+        <ResizeHandle {...categories.handleProps} label={tr("Resize settings categories", "调整设置分类栏宽度")} controls="settings-categories" className="settings-resize" />
         <form className="settings-form" onSubmit={(event) => void save(event)} aria-busy={saving || loading}>
           <div className="settings-search"><Search size={16} /><input type="search" aria-label={tr("Search settings", "搜索设置")} placeholder={tr("Search by name or environment variable…", "搜索设置或环境变量…")} value={query} onChange={(event) => setQuery(event.target.value)} />{query && <button type="button" className="icon-button" aria-label={tr("Clear search", "清空搜索")} onClick={() => setQuery("")}><X size={14} /></button>}</div>
           {(settings?.restart_required || saved) && <div className="settings-notice" role="status"><Check size={16} /><div><strong>{tr("Saved to .env", "已保存到 .env")}</strong><p>{tr("Restart the API and web services to apply changes. Stop the startup script with Ctrl+C, then run your usual start command again.", "重启前后端服务后生效。在启动终端按 Ctrl+C 停止，再执行原来的启动命令。")}</p></div></div>}

@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { getPaperSummary, streamPaperSummary } from "@/lib/api";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import { MarkdownContent } from "@/components/content/MarkdownContent";
+import { ResizeHandle, useResizablePanel } from "@/components/layout/ResizeHandle";
 import type { PaperSummary as PaperSummaryData } from "@/types/api";
 
 interface BriefingSection {
@@ -76,6 +78,7 @@ function AskButton({ onAsk, question, label }: { onAsk: (question: string) => vo
 
 export function BriefingCard({ paperId, onAsk }: { paperId: string; onAsk?: (question: string) => void }) {
   const { language, tr } = useI18n();
+  const height = useResizablePanel({ storageKey: "briefing", initial: 240, min: 80, max: 700, axis: "y" });
   const [summary, setSummary] = useState<PaperSummaryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -160,7 +163,7 @@ export function BriefingCard({ paperId, onAsk }: { paperId: string; onAsk?: (que
         )}
       </header>
       {open && (
-        <div className="briefing-body">
+        <div style={height.style} className="briefing-body" id="briefing-content">
           {loading && (
             <p className="briefing-hint"><LoaderCircle className="spin" size={14} /> {tr("Loading briefing…", "正在加载速览…")}</p>
           )}
@@ -184,7 +187,7 @@ export function BriefingCard({ paperId, onAsk }: { paperId: string; onAsk?: (que
           {summary?.content && (
             <>
               <p className="briefing-tldr">
-                {summary.content.tldr}
+                <MarkdownContent inline>{summary.content.tldr}</MarkdownContent>
                 {onAsk && (
                   <AskButton onAsk={onAsk} question={TLDR_QUESTION} label={["Ask about the summary", "就摘要提问"]} />
                 )}
@@ -197,7 +200,7 @@ export function BriefingCard({ paperId, onAsk }: { paperId: string; onAsk?: (que
                       <AskButton onAsk={onAsk} question={BACKGROUND_QUESTION} label={["Ask about the background", "就研究背景提问"]} />
                     )}
                   </h4>
-                  <p>{summary.content.background}</p>
+                  <p><MarkdownContent inline>{summary.content.background}</MarkdownContent></p>
                 </div>
                 <div className="briefing-block">
                   <h4>
@@ -206,7 +209,7 @@ export function BriefingCard({ paperId, onAsk }: { paperId: string; onAsk?: (que
                       <AskButton onAsk={onAsk} question={METHODOLOGY_QUESTION} label={["Ask about the methodology", "就方法提问"]} />
                     )}
                   </h4>
-                  <p>{summary.content.methodology}</p>
+                  <p><MarkdownContent inline>{summary.content.methodology}</MarkdownContent></p>
                 </div>
               </div>
               {SECTIONS.map(({ key, title, question }) => {
@@ -219,7 +222,7 @@ export function BriefingCard({ paperId, onAsk }: { paperId: string; onAsk?: (que
                       {onAsk && <AskButton onAsk={onAsk} question={question} label={[`Ask about ${title[0].toLowerCase()}`, `就${title[1]}提问`]} />}
                     </h4>
                     <ul>
-                      {items.map((item, index) => <li key={index}>{item}</li>)}
+                      {items.map((item, index) => <li key={index}><MarkdownContent inline>{item}</MarkdownContent></li>)}
                     </ul>
                   </div>
                 );
@@ -231,7 +234,7 @@ export function BriefingCard({ paperId, onAsk }: { paperId: string; onAsk?: (que
                     {summary.content.key_terms.map((term) => (
                       <div className="briefing-term" key={term.term}>
                         <dt>
-                          {term.term}
+                          <MarkdownContent inline>{term.term}</MarkdownContent>
                           {onAsk && (
                             <AskButton
                               onAsk={onAsk}
@@ -240,7 +243,7 @@ export function BriefingCard({ paperId, onAsk }: { paperId: string; onAsk?: (que
                             />
                           )}
                         </dt>
-                        <dd>{term.definition}</dd>
+                        <dd><MarkdownContent inline>{term.definition}</MarkdownContent></dd>
                       </div>
                     ))}
                   </dl>
@@ -250,6 +253,7 @@ export function BriefingCard({ paperId, onAsk }: { paperId: string; onAsk?: (que
           )}
         </div>
       )}
+      {open && <ResizeHandle {...height.handleProps} label={tr("Resize briefing and PDF", "调整速览与 PDF 高度")} controls="briefing-content" />}
     </section>
   );
 }

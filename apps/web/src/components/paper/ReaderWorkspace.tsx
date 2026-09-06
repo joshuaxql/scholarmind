@@ -5,11 +5,13 @@ import { BookOpen, MessagesSquare } from "lucide-react";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { BriefingCard } from "@/components/paper/BriefingCard";
 import { PdfPane } from "@/components/paper/PdfPane";
+import { ResizeHandle, useResizablePanel } from "@/components/layout/ResizeHandle";
 import type { Citation, Paper } from "@/types/api";
 import { useI18n } from "@/components/i18n/I18nProvider";
 
 export function ReaderWorkspace({ paper }: { paper: Paper }) {
   const { tr } = useI18n();
+  const columns = useResizablePanel({ storageKey: "reader", initial: 50, min: 25, max: 75, unit: "%" });
   const [page, setPage] = useState<number | null>(null);
   const [mobilePane, setMobilePane] = useState<"paper" | "chat">("chat");
   // Question handed over from the briefing card to the chat panel; the nonce marks each new request.
@@ -34,11 +36,12 @@ export function ReaderWorkspace({ paper }: { paper: Paper }) {
         <button aria-pressed={mobilePane === "paper"} className={mobilePane === "paper" ? "active" : ""} onClick={() => setMobilePane("paper")}><BookOpen size={16} /> {tr("Paper", "论文")}</button>
         <button aria-pressed={mobilePane === "chat"} className={mobilePane === "chat" ? "active" : ""} onClick={() => setMobilePane("chat")}><MessagesSquare size={16} /> {tr("Conversation", "论文对话")}</button>
       </nav>
-      <div className={`workspace-grid show-${mobilePane}`}>
-        <div className={`reader-pane show-${mobilePane}`}>
+      <div style={columns.style} className={`workspace-grid show-${mobilePane}`}>
+        <div id="reader-document" className={`reader-pane show-${mobilePane}`}>
           <BriefingCard paperId={paper.id} onAsk={askQuestion} />
           <PdfPane paperId={paper.id} title={title} page={page} />
         </div>
+        <ResizeHandle {...columns.handleProps} label={tr("Resize document and conversation", "调整文档与对话宽度")} controls="reader-document" className="reader-resize" />
         <ChatPanel paperId={paper.id} title={title} onCitation={openCitation} askRequest={askRequest} />
       </div>
     </div>

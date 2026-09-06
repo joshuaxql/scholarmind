@@ -8,6 +8,7 @@ import { Wordmark } from "@/components/brand/Wordmark";
 import { LanguageToggle, useI18n } from "@/components/i18n/I18nProvider";
 import { deleteResearch, listPapers, listResearch, removePaperHistory } from "@/lib/api";
 import { HistoryActions } from "@/components/history/HistoryActions";
+import { ResizeHandle, useResizablePanel } from "@/components/layout/ResizeHandle";
 import type { Paper, ResearchSearch } from "@/types/api";
 
 const HistoryContext = createContext({
@@ -25,6 +26,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const removedPapers = useRef(new Set<string>());
   const removedResearch = useRef(new Set<string>());
   const { tr } = useI18n();
+  const sidebar = useResizablePanel({ storageKey: "sidebar", initial: 248, min: 200, max: 420 });
   const researchMode = pathname.startsWith("/research");
   const settingsMode = pathname === "/settings";
   const [collapsed, setCollapsed] = useState(false);
@@ -85,7 +87,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
 
   return (
     <HistoryContext.Provider value={{ refreshHistory, historyRevision, setActiveResearchId }}>
-      <div className={`app-shell${collapsed ? " sidebar-collapsed" : ""}${mobileOpen ? " mobile-open" : ""}`}>
+      <div style={sidebar.style} className={`app-shell${collapsed ? " sidebar-collapsed" : ""}${mobileOpen ? " mobile-open" : ""}`}>
         <a className="skip-link" href="#workspace-content">{tr("Skip to content", "跳转到内容")}</a>
         {mobileOpen && <button className="sidebar-backdrop" aria-label={tr("Close sidebar", "关闭侧栏")} onClick={() => setMobileOpen(false)} />}
         <aside className="app-sidebar" id="workspace-sidebar" aria-label={tr("Workspace navigation", "工作区导航")}>
@@ -108,6 +110,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
             {historyFailed && <button className="history-retry" onClick={refreshHistory}>{tr("History unavailable · Retry", "历史加载失败 · 重试")}</button>}
           </div>
           <div className="sidebar-footer"><span className="workspace-avatar"><FolderOpen size={18} /></span><div><strong>{tr("Local workspace", "本地工作区")}</strong><span>ScholarMind</span></div><Link href="/settings" className={`icon-button settings-entry${settingsMode ? " active" : ""}`} aria-label={tr("Settings", "设置")} aria-current={settingsMode ? "page" : undefined} onClick={() => setMobileOpen(false)}><Settings size={18} /></Link></div>
+          <ResizeHandle {...sidebar.handleProps} label={tr("Resize sidebar", "调整侧栏宽度")} controls="workspace-sidebar" className="resize-edge-right sidebar-resize" />
         </aside>
         <div className="app-main" inert={mobileOpen}>
           <header className="workspace-topbar">

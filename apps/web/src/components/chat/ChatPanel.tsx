@@ -11,8 +11,8 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { MarkdownContent } from "@/components/content/MarkdownContent";
+import { ResizeHandle, useResizablePanel } from "@/components/layout/ResizeHandle";
 import { HistoryActions } from "@/components/history/HistoryActions";
 import { usePaperChat } from "@/hooks/usePaperChat";
 import { useI18n } from "@/components/i18n/I18nProvider";
@@ -34,6 +34,9 @@ interface ChatPanelProps {
 
 export function ChatPanel({ paperId, title, onCitation, askRequest }: ChatPanelProps) {
   const { tr } = useI18n();
+  const composer = useResizablePanel({ storageKey: "chat-composer", initial: 118, min: 100, max: 300, axis: "y" });
+  const historyWidth = useResizablePanel({ storageKey: "chat-history-width", initial: 340, min: 220, max: 650, property: "--history-width" });
+  const historyHeight = useResizablePanel({ storageKey: "chat-history-height", initial: 360, min: 180, max: 720, axis: "y", property: "--history-height" });
   const chat = usePaperChat(paperId);
   const { messages, streaming, error, send, stop } = chat;
   const conversations = chat.conversations ?? [];
@@ -86,7 +89,8 @@ export function ChatPanel({ paperId, title, onCitation, askRequest }: ChatPanelP
         </div>
       </div>
       {historyOpen && (
-        <aside className="chat-history" aria-label={tr("Conversation history", "历史会话")}>
+        <aside id="chat-history" style={{ ...historyWidth.style, ...historyHeight.style }} className="chat-history" aria-label={tr("Conversation history", "历史会话")}>
+          <ResizeHandle {...historyWidth.handleProps} controls="chat-history" label={tr("Resize conversation history width", "调整历史会话宽度")} factor={-1} className="resize-edge-left" />
           <header>
             <div><span>{tr("Saved notebook", "已保存笔记")}</span><strong>{conversations.length} {tr("conversations", "个会话")}</strong></div>
             <button type="button" onClick={() => setHistoryOpen(false)} aria-label={tr("Close history", "关闭历史")}><X size={15} /></button>
@@ -111,6 +115,7 @@ export function ChatPanel({ paperId, title, onCitation, askRequest }: ChatPanelP
               </HistoryActions>
             ))}
           </div>
+          <ResizeHandle {...historyHeight.handleProps} controls="chat-history" label={tr("Resize conversation history height", "调整历史会话高度")} />
         </aside>
       )}
       <div className="chat-scroll" ref={scrollRef}>
@@ -118,7 +123,7 @@ export function ChatPanel({ paperId, title, onCitation, askRequest }: ChatPanelP
           <div className="chat-empty">
             <span className="chat-orbit" aria-hidden="true"><BookOpenText size={28} /></span>
             <h2>{tr("Let’s understand this paper", "一起读懂这篇论文")}</h2>
-            <p>{tr("Ask about", "围绕")} <em>{title}</em>{tr(". Follow each citation back to the original page.", "提问，点击引用即可查看原文页码。")}</p>
+            <p>{tr("Ask about", "围绕")} <em><MarkdownContent inline>{title}</MarkdownContent></em>{tr(". Follow each citation back to the original page.", "提问，点击引用即可查看原文页码。")}</p>
             <div className="suggestion-list">
               {SUGGESTIONS.map(([english, chinese], index) => {
                 const suggestion = tr(english, chinese);
@@ -139,7 +144,7 @@ export function ChatPanel({ paperId, title, onCitation, askRequest }: ChatPanelP
                   {message.role === "assistant" ? "ScholarMind" : tr("You", "你")}
                 </div>
                 <div className="message-content">
-                  {message.content ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown> : <span className="thinking-line">{tr("Reading the relevant passages", "正在阅读相关段落")}</span>}
+                  {message.content ? <MarkdownContent>{message.content}</MarkdownContent> : <span className="thinking-line">{tr("Reading the relevant passages", "正在阅读相关段落")}</span>}
                   {message.pending && message.content && <i className="stream-caret" />}
                 </div>
                 {message.citations && message.citations.length > 0 && (
@@ -158,7 +163,8 @@ export function ChatPanel({ paperId, title, onCitation, askRequest }: ChatPanelP
           </div>
         )}
       </div>
-      <form className="chat-composer" onSubmit={submit}>
+      <form style={composer.style} className="chat-composer" id="chat-composer" onSubmit={submit}>
+        <ResizeHandle {...composer.handleProps} label={tr("Resize question input", "调整提问输入区高度")} controls="chat-composer" factor={-1} />
         <textarea
           value={query}
           onChange={(event) => setQuery(event.target.value)}
