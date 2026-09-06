@@ -96,7 +96,9 @@ class OpenAIBriefingAnalyzer:
         self.client = client
         self.endpoint = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
         self.api_key = settings.llm_api_key.get_secret_value()
-        self.model = settings.llm_model
+        # The briefing is a single structured summary; allow a faster non-reasoning model
+        # while chat Q&A keeps the primary LLM_MODEL.
+        self.model = settings.summary_llm_model or settings.llm_model
         self.temperature = settings.llm_temperature
         self.max_tokens = settings.llm_max_output_tokens
 
