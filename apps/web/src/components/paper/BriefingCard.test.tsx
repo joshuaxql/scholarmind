@@ -126,4 +126,24 @@ describe("BriefingCard", () => {
     expect(await screen.findByText(/drafting the overview/)).toBeInTheDocument();
     releaseStream?.();
   });
+
+  it("hands a section question over to the chat via onAsk", async () => {
+    mockedGet.mockResolvedValue(readySummary);
+    const onAsk = vi.fn();
+    render(<BriefingCard paperId="paper-1" onAsk={onAsk} />);
+    await screen.findByText("The paper studies attention scaling.");
+    fireEvent.click(screen.getByRole("button", { name: /ask about the methodology/i }));
+    expect(onAsk).toHaveBeenCalledWith(
+      "Walk me through the methodology of this paper step by step.",
+    );
+  });
+
+  it("hands a key term question over to the chat via onAsk", async () => {
+    mockedGet.mockResolvedValue(readySummary);
+    const onAsk = vi.fn();
+    render(<BriefingCard paperId="paper-1" onAsk={onAsk} />);
+    await screen.findByText("Saturation");
+    fireEvent.click(screen.getByRole("button", { name: /ask about saturation/i }));
+    expect(onAsk).toHaveBeenCalledWith('Explain the term "Saturation" in detail.');
+  });
 });
