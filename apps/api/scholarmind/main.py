@@ -23,6 +23,7 @@ from scholarmind.services.arxiv_search import build_arxiv_search_client
 from scholarmind.services.dispatch import build_dispatcher
 from scholarmind.services.environment import EnvironmentService
 from scholarmind.services.llm import build_llm_gateway
+from scholarmind.services.paper_summary import build_briefing_analyzer
 from scholarmind.services.provider_client import build_provider_client
 from scholarmind.services.research_analysis import build_research_analyzer
 from scholarmind.services.retrieval import build_retriever
@@ -42,6 +43,7 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     retriever = build_retriever(settings, provider_client)
     llm_gateway = build_llm_gateway(settings, provider_client)
     research_analyzer = build_research_analyzer(settings, provider_client)
+    briefing_analyzer = build_briefing_analyzer(settings, provider_client)
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
@@ -81,6 +83,7 @@ def create_app(app_settings: Settings | None = None) -> FastAPI:
     application.state.llm_gateway = llm_gateway
     application.state.arxiv_search_client = arxiv_search_client
     application.state.research_analyzer = research_analyzer
+    application.state.briefing_analyzer = briefing_analyzer
     application.dependency_overrides[get_settings] = lambda: settings
 
     application.add_middleware(

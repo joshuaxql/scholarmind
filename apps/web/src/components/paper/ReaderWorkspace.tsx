@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { BookOpen, MessagesSquare } from "lucide-react";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { BriefingCard } from "@/components/paper/BriefingCard";
 import { PdfPane } from "@/components/paper/PdfPane";
 import type { Citation, Paper } from "@/types/api";
 import { useI18n } from "@/components/i18n/I18nProvider";
@@ -25,7 +26,10 @@ export function ReaderWorkspace({ paper }: { paper: Paper }) {
         <button aria-pressed={mobilePane === "chat"} className={mobilePane === "chat" ? "active" : ""} onClick={() => setMobilePane("chat")}><MessagesSquare size={16} /> {tr("Conversation", "论文对话")}</button>
       </nav>
       <div className={`workspace-grid show-${mobilePane}`}>
-        <PdfPane paperId={paper.id} title={title} page={page} />
+        <div className={`reader-pane show-${mobilePane}`}>
+          <BriefingCard paperId={paper.id} />
+          <PdfPane paperId={paper.id} title={title} page={page} />
+        </div>
         <ChatPanel paperId={paper.id} title={title} onCitation={openCitation} />
       </div>
     </div>

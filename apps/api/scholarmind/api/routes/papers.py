@@ -15,12 +15,15 @@ from scholarmind.api.schemas import (
     PaperCreateRequest,
     PaperCreateResponse,
     PaperResponse,
+    PaperSummaryRequest,
+    PaperSummaryResponse,
 )
 from scholarmind.core.security import Principal, get_current_principal
-from scholarmind.db.models import IngestionJob, Paper
+from scholarmind.db.models import IngestionJob, Paper, PaperSummary
 from scholarmind.domain.errors import ConflictError, DomainError, NotFoundError
 from scholarmind.domain.papers import JobStatus, PaperStatus
 from scholarmind.repositories.papers import PaperRepository
+from scholarmind.services.paper_summary import PaperSummaryService
 from scholarmind.services.papers import PaperCreation, PaperService
 
 router = APIRouter(prefix="/papers", tags=["papers"])
@@ -126,6 +129,36 @@ async def get_latest_job(
     return JobResponse.model_validate(job)
 
 
+@router.get("/{paper_id}/summary", response_model=PaperSummaryResponse)
+async def get_paper_summary(
+    paper_id: UUID,
+    request: Request,
+    session: Session,
+    principal: CurrentPrincipal,
+) -> PaperSummaryResponse:
+    await PaperService(session).get(paper_id, principal.subject)
+    summary = await _summary_service(request, session).get(paper_id, principal.subject)
+    return _summary_response(paper_id, summary)
+
+
+@router.post("/{paper_id}/summary", response_model=PaperSummaryResponse)
+async def generate_paper_summary(
+    paper_id: UUID,
+    payload: PaperSummaryRequest,
+    request: Request,
+    session: Session,
+    principal: CurrentPrincipal,
+) -> PaperSummaryResponse:
+    service = _summary_service(request, session)
+    summary = await service.generate(
+        paper_id,
+        principal.subject,
+        payload.language,
+        refresh=payload.refresh,
+    )
+    return _summary_response(paper_id, summary)
+
+
 @router.post(
     "/{paper_id}/retry", response_model=PaperCreateResponse, status_code=status.HTTP_202_ACCEPTED
 )
@@ -186,3 +219,26 @@ def _paper_response(paper: Paper, latest_job: IngestionJob | None) -> PaperRespo
 
 def _latest_job(paper: Paper) -> IngestionJob | None:
     return max(paper.jobs, key=lambda item: item.created_at) if paper.jobs else None
+
+
+def _summary_service(request: Request, session: AsyncSession) -> PaperSummaryService:
+    return PaperSummaryService(
+        session,
+        request.app.state.briefing_analyzer,
+        request.app.state.settings.summary_max_context_characters,
+    )
+
+
+def _summary_response(paper_id: UUID, summary: PaperSummary | None) -> PaperSummaryResponse:
+    if summary is None:
+        return PaperSummaryResponse(paper_id=paper_id, status="pending", language=None)
+    return PaperSummaryResponse(
+        paper_id=summary.paper_id,
+        status=summary.status.value,
+        language=summary.language,
+        content=summary.content,
+        error_code=summary.error_code,
+        error_message=summary.error_message,
+        created_at=summary.created_at,
+        updated_at=summary.updated_at,
+    )
