@@ -15,6 +15,7 @@ from scholarmind.core.config import Settings
 from scholarmind.db.models import Paper, PaperChunk, PaperSummary
 from scholarmind.domain.errors import ConflictError, DomainError, NotFoundError
 from scholarmind.domain.papers import PaperStatus, SummaryStatus
+from scholarmind.services.llm_stream import ModelStreamError, TokenCallback, stream_completion
 
 logger = structlog.get_logger(__name__)
 
@@ -41,6 +42,7 @@ class BriefingAnalyzer(Protocol):
         abstract: str | None,
         context: str,
         language: str,
+        on_token: TokenCallback | None = None,
     ) -> PaperBriefing: ...
 
 
@@ -53,6 +55,7 @@ class LocalBriefingAnalyzer:
         abstract: str | None,
         context: str,
         language: str,
+        on_token: TokenCallback | None = None,
     ) -> PaperBriefing:
         source = (abstract or context).strip()
         sentences = [
@@ -93,7 +96,9 @@ class OpenAIBriefingAnalyzer:
         self.client = client
         self.endpoint = f"{settings.llm_base_url.rstrip('/')}/chat/completions"
         self.api_key = settings.llm_api_key.get_secret_value()
-        self.model = settings.llm_model
+        # The briefing is a single structured summary; allow a faster non-reasoning model
+        # while chat Q&A keeps the primary LLM_MODEL.
+        self.model = settings.summary_llm_model or settings.llm_model
         self.temperature = settings.llm_temperature
         self.max_tokens = settings.llm_max_output_tokens
 
@@ -103,6 +108,7 @@ class OpenAIBriefingAnalyzer:
         abstract: str | None,
         context: str,
         language: str,
+        on_token: TokenCallback | None = None,
     ) -> PaperBriefing:
         output_language = "Chinese" if language == "zh" else "English"
         system = f"""You are ScholarMind's paper briefing writer.
@@ -128,16 +134,20 @@ Keep it concise: at most 6 contributions, 6 findings, 6 limitations, and 10 key 
             f"{context}\n"
             "</paper_text>"
         )
-        content = await self._complete(system, user)
+        content = await self._complete(system, user, on_token=on_token)
         try:
             return PaperBriefing.model_validate(_json_object(content))
         except (ValidationError, ValueError, TypeError) as exc:
             logger.warning("briefing_model_output_invalid", error_type=type(exc).__name__)
             raise _briefing_error("The model returned an invalid paper briefing") from exc
 
-    async def _complete(self, system: str, user: str) -> str:
-        from scholarmind.services.llm_stream import ModelStreamError, stream_completion
-
+    async def _complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        on_token: TokenCallback | None = None,
+    ) -> str:
         parts: list[str] = []
         try:
             async for token in stream_completion(
@@ -155,6 +165,8 @@ Keep it concise: at most 6 contributions, 6 findings, 6 limitations, and 10 key 
                 },
             ):
                 parts.append(token)
+                if on_token is not None:
+                    await on_token(token)
             return "".join(parts)
         except ModelStreamError as exc:
             raise DomainError(code=exc.code, message=str(exc), status_code=502) from exc
@@ -197,6 +209,7 @@ class PaperSummaryService:
         language: str,
         *,
         refresh: bool = False,
+        on_token: TokenCallback | None = None,
     ) -> PaperSummary:
         paper = await self._paper(paper_id, owner_id)
         if paper.status != PaperStatus.READY:
@@ -217,7 +230,9 @@ class PaperSummaryService:
 
         context = await self._context(paper)
         try:
-            briefing = await self.analyzer.summarize(paper.title, paper.abstract, context, language)
+            briefing = await self.analyzer.summarize(
+                paper.title, paper.abstract, context, language, on_token=on_token
+            )
         except DomainError as exc:
             await self._persist_failure(paper, language, summary, exc.code, exc.message)
             raise

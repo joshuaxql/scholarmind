@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Lightbulb, LoaderCircle, RotateCcw, Sparkles } from "lucide-react";
-import { generatePaperSummary, getPaperSummary } from "@/lib/api";
+import { getPaperSummary, streamPaperSummary } from "@/lib/api";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import type { PaperSummary as PaperSummaryData } from "@/types/api";
 
@@ -22,8 +22,10 @@ export function BriefingCard({ paperId }: { paperId: string }) {
   const [summary, setSummary] = useState<PaperSummaryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(true);
+  const busyRef = useRef(false);
 
   const load = useCallback(
     async (signal?: AbortSignal) => {
@@ -52,14 +54,27 @@ export function BriefingCard({ paperId }: { paperId: string }) {
 
   const generate = useCallback(
     async (refresh: boolean) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
       setBusy(true);
       setError(null);
+      setProgress("");
       try {
-        setSummary(await generatePaperSummary(paperId, { language, refresh }));
+        for await (const event of streamPaperSummary(paperId, { language, refresh })) {
+          if (event.event === "token" && event.data.text) {
+            setProgress((current) => (current + event.data.text!).slice(-120));
+          } else if (event.event === "done" && event.data.summary) {
+            setSummary(event.data.summary);
+          } else if (event.event === "error") {
+            throw new Error(event.data.message ?? tr("The briefing could not be generated", "无法生成速览"));
+          }
+        }
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : tr("The briefing could not be generated", "无法生成速览"));
       } finally {
+        busyRef.current = false;
         setBusy(false);
+        setProgress("");
       }
     },
     [language, paperId, tr],
@@ -67,10 +82,10 @@ export function BriefingCard({ paperId }: { paperId: string }) {
 
   // First visit of a ready paper without a briefing: generate one automatically.
   useEffect(() => {
-    if (loading || busy || summary?.status !== "pending") return;
+    if (loading || busyRef.current || summary?.status !== "pending") return;
     const timer = setTimeout(() => void generate(false), 0);
     return () => clearTimeout(timer);
-  }, [loading, summary, busy, generate]);
+  }, [loading, summary, generate]);
 
   return (
     <section className="briefing-card" aria-label={tr("Paper briefing", "论文速览")}>
@@ -93,7 +108,12 @@ export function BriefingCard({ paperId }: { paperId: string }) {
             <p className="briefing-hint"><LoaderCircle className="spin" size={14} /> {tr("Loading briefing…", "正在加载速览…")}</p>
           )}
           {!loading && summary?.status === "pending" && busy && (
-            <p className="briefing-hint"><LoaderCircle className="spin" size={14} /> {tr("Generating briefing…", "正在生成速览…")}</p>
+            <div className="briefing-progress">
+              <LoaderCircle className="spin" size={14} />
+              <span className="briefing-progress-text">
+                {tr("Generating briefing… ", "正在生成速览… ")}{progress && <code>{progress}</code>}
+              </span>
+            </div>
           )}
           {!loading && summary?.status === "failed" && (
             <div className="briefing-error">

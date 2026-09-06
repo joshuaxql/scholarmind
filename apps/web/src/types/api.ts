@@ -91,6 +91,18 @@ export interface PaperSummaryInput {
   refresh: boolean;
 }
 
+export interface PaperSummaryStreamEvent {
+  event: "meta" | "token" | "done" | "error";
+  data: {
+    paper_id?: string;
+    stage?: string;
+    text?: string;
+    summary?: PaperSummary;
+    code?: string;
+    message?: string;
+  };
+}
+
 export interface PaperCollection {
   items: Paper[];
   total: number;

@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     research_cache_ttl_seconds: int = Field(default=21_600, ge=0, le=604_800)
     research_max_context_characters: int = Field(default=50_000, ge=5_000, le=200_000)
     summary_max_context_characters: int = Field(default=24_000, ge=2_000, le=200_000)
+    # Optional faster model for the paper briefing; falls back to LLM_MODEL when empty.
+    summary_llm_model: str | None = None
     max_pdf_bytes: int = Field(default=50 * 1024 * 1024, ge=1024, le=500 * 1024 * 1024)
     max_pdf_pages: int = Field(default=500, ge=1, le=5000)
     ingestion_max_attempts: int = Field(default=3, ge=1, le=10)
@@ -88,6 +90,7 @@ class Settings(BaseSettings):
         "llm_base_url",
         "llm_api_key",
         "llm_model",
+        "summary_llm_model",
         "embedding_base_url",
         "embedding_api_key",
         "embedding_model",

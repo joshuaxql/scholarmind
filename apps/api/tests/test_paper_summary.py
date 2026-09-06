@@ -117,6 +117,73 @@ async def test_failure_is_persisted_without_faking_success(
 
 
 @pytest.mark.asyncio
+async def test_stream_summary_emits_tokens_and_persists_result(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    paper_id = await seed_ready_paper(app, arxiv="2501.12345")
+
+    class StreamingAnalyzer:
+        async def summarize(self, title, abstract, context, language, on_token=None):
+            if on_token is not None:
+                await on_token('{"tldr": "a"')
+                await on_token("}")
+            from scholarmind.services.paper_summary import PaperBriefing
+
+            return PaperBriefing(
+                tldr="a",
+                background="b",
+                contributions=["c"],
+                methodology="d",
+                key_findings=["e"],
+                limitations=["f"],
+                key_terms=[{"term": "g", "definition": "h"}],
+            )
+
+    app.state.briefing_analyzer = StreamingAnalyzer()
+    events: list[tuple[str, ...]] = []
+    async with client.stream(
+        "POST", f"/api/v1/papers/{paper_id}/summary/stream", json={"language": "en"}
+    ) as response:
+        assert response.status_code == 200
+        async for line in response.aiter_lines():
+            if line.startswith("event:"):
+                events.append((line.split(":", 1)[1].strip(),))
+    assert ("meta",) in events
+    assert ("token",) in events
+    assert events[-1] == ("done",)
+
+    stored = await client.get(f"/api/v1/papers/{paper_id}/summary")
+    assert stored.status_code == 200
+    assert stored.json()["status"] == "ready"
+
+
+@pytest.mark.asyncio
+async def test_stream_summary_reports_error_event_without_faking_success(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    paper_id = await seed_ready_paper(app, arxiv="2501.67890")
+
+    class FailingAnalyzer:
+        async def summarize(self, title, abstract, context, language, on_token=None):
+            raise RuntimeError("model offline")
+
+    app.state.briefing_analyzer = FailingAnalyzer()
+    payload_lines: list[str] = []
+    async with client.stream(
+        "POST", f"/api/v1/papers/{paper_id}/summary/stream", json={"language": "en"}
+    ) as response:
+        assert response.status_code == 200
+        async for line in response.aiter_lines():
+            payload_lines.append(line)
+    joined = "\n".join(payload_lines)
+    assert "event: error" in joined
+    assert "briefing_generation_failed" in joined
+
+    stored = await client.get(f"/api/v1/papers/{paper_id}/summary")
+    assert stored.json()["status"] == "failed"
+
+
+@pytest.mark.asyncio
 async def test_refresh_regenerates_and_changes_language(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:

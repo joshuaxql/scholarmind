@@ -9,6 +9,7 @@ from scholarmind.core.config import Settings
 from scholarmind.services.embeddings import OpenAICompatibleEmbedding
 from scholarmind.services.ingestion_errors import IngestionError
 from scholarmind.services.llm import OpenAICompatibleGateway
+from scholarmind.services.paper_summary import OpenAIBriefingAnalyzer
 
 
 def provider_settings(**overrides: object) -> Settings:
@@ -52,6 +53,37 @@ async def test_openai_stream_uses_bearer_secret_and_yields_incremental_text() ->
     assert payload["stream"] is True
     assert payload["messages"][0]["role"] == "system"
     assert "[S1] Evidence" in payload["messages"][-1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_briefing_analyzer_uses_summary_model_and_falls_back() -> None:
+    payloads: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payloads.append(json.loads(request.content))
+        briefing = {
+            "tldr": "T",
+            "background": "B",
+            "contributions": [],
+            "methodology": "M",
+            "key_findings": [],
+            "limitations": [],
+            "key_terms": [],
+        }
+        delta = json.dumps({"choices": [{"delta": {"content": json.dumps(briefing)}}]})
+        body = f"data: {delta}\n\ndata: [DONE]\n\n"
+        return httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        override = OpenAIBriefingAnalyzer(
+            client, provider_settings(summary_llm_model="flash-model")
+        )
+        await override.summarize("Title", None, "Context", "en")
+        fallback = OpenAIBriefingAnalyzer(client, provider_settings())
+        await fallback.summarize("Title", None, "Context", "en")
+
+    assert payloads[0]["model"] == "flash-model"
+    assert payloads[1]["model"] == "scholar-chat"
 
 
 @pytest.mark.asyncio
