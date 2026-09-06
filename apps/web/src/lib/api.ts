@@ -9,6 +9,7 @@ import type {
   PaperCreateResponse,
   PaperSummary,
   PaperSummaryInput,
+  PaperSummaryStreamEvent,
   ResearchAnalysisEvent,
   ResearchCollection,
   ResearchSearch,
@@ -68,6 +69,30 @@ export async function generatePaperSummary(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function* streamPaperSummary(
+  id: string,
+  input: PaperSummaryInput,
+  signal?: AbortSignal,
+): AsyncGenerator<PaperSummaryStreamEvent> {
+  const response = await fetch(
+    `${API_ROOT}/papers/${encodeURIComponent(id)}/summary/stream`,
+    {
+      method: "POST",
+      headers: { Accept: "text/event-stream", "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      cache: "no-store",
+      signal,
+    },
+  );
+  for await (const event of readServerEvents(response)) {
+    const progress = event as PaperSummaryStreamEvent;
+    yield progress;
+    if (progress.event === "done") return;
+    if (progress.event === "error") return;
+  }
+  throw new Error("The briefing stream ended before completion. Please retry.");
 }
 
 export async function listConversations(

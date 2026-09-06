@@ -5,7 +5,7 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response, status
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from scholarmind.api.dependencies import get_session
@@ -18,6 +18,7 @@ from scholarmind.api.schemas import (
     PaperSummaryRequest,
     PaperSummaryResponse,
 )
+from scholarmind.api.streaming import EventSink, keep_alive, operation_events
 from scholarmind.core.security import Principal, get_current_principal
 from scholarmind.db.models import IngestionJob, Paper, PaperSummary
 from scholarmind.domain.errors import ConflictError, DomainError, NotFoundError
@@ -157,6 +158,41 @@ async def generate_paper_summary(
         refresh=payload.refresh,
     )
     return _summary_response(paper_id, summary)
+
+
+@router.post("/{paper_id}/summary/stream")
+async def stream_paper_summary(
+    paper_id: UUID,
+    payload: PaperSummaryRequest,
+    request: Request,
+    principal: CurrentPrincipal,
+) -> StreamingResponse:
+    """Stream briefing progress tokens, then persist and return the summary."""
+
+    async def generate(emit: EventSink) -> object:
+        async def token(text: str) -> None:
+            await emit("token", {"text": text})
+
+        sessions = request.app.state.database.session_factory
+        async with sessions() as session:
+            service = _summary_service(request, session)
+            summary = await service.generate(
+                paper_id,
+                principal.subject,
+                payload.language,
+                refresh=payload.refresh,
+                on_token=token,
+            )
+            return {"summary": _summary_response(paper_id, summary).model_dump(mode="json")}
+
+    return StreamingResponse(
+        keep_alive(operation_events(generate, {"paper_id": str(paper_id), "stage": "generating"})),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post(
