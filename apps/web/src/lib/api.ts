@@ -72,11 +72,25 @@ export async function getConversation(
   );
 }
 
-export async function searchResearch(input: ResearchSearchInput): Promise<ResearchSearch> {
-  return request<ResearchSearch>("/research/search", {
+export async function searchResearch(
+  input: ResearchSearchInput,
+  signal?: AbortSignal,
+  onProgress?: (event: ResearchAnalysisEvent) => void,
+): Promise<ResearchSearch> {
+  const response = await fetch(`${API_ROOT}/research/search/stream`, {
     method: "POST",
+    headers: { Accept: "text/event-stream", "Content-Type": "application/json" },
     body: JSON.stringify(input),
+    cache: "no-store",
+    signal,
   });
+  for await (const event of readServerEvents(response)) {
+    const progress = event as ResearchAnalysisEvent;
+    if (progress.event === "error") throw new Error(progress.data.message ?? "Research search failed");
+    if (progress.event === "done" && progress.data.search) return progress.data.search;
+    onProgress?.(progress);
+  }
+  throw new Error("The search stream ended before completion. Please retry.");
 }
 
 export async function getResearch(id: string): Promise<ResearchSearch> {
@@ -113,8 +127,12 @@ export async function* analyzeResearch(
     },
   );
   for await (const event of readServerEvents(response)) {
-    yield event as ResearchAnalysisEvent;
+    const progress = event as ResearchAnalysisEvent;
+    yield progress;
+    if (progress.event === "done" && progress.data.report) return;
+    if (progress.event === "error") return;
   }
+  throw new Error("The report stream ended before completion. Please retry.");
 }
 
 export function paperPdfUrl(id: string, page?: number): string {

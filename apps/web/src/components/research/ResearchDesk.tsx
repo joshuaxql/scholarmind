@@ -9,6 +9,7 @@ import {
   LoaderCircle,
   Search,
   SlidersHorizontal,
+  Square,
   Telescope,
   TriangleAlert,
 } from "lucide-react";
@@ -16,6 +17,7 @@ import { ModeSwitch } from "@/components/layout/ModeSwitch";
 import { useWorkspace } from "@/components/layout/WorkspaceShell";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import { analyzeResearch, createPaper, getResearch, searchResearch } from "@/lib/api";
+import { researchPreview } from "@/lib/research-preview";
 import type {
   ArxivSearchPaper,
   ResearchReport,
@@ -43,6 +45,10 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
   const [searching, setSearching] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [openingPaper, setOpeningPaper] = useState<string | null>(null);
+  const [planningOutput, setPlanningOutput] = useState("");
+  const [reportOutput, setReportOutput] = useState("");
+  const [searchStage, setSearchStage] = useState("planning");
+  const [stopped, setStopped] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,6 +70,10 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
+    setPlanningOutput("");
+    setReportOutput("");
+    setSearchStage("planning");
+    setStopped(false);
     setSearching(true);
     setAnalyzing(false);
     setResearch(null);
@@ -77,6 +87,12 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
         published_to: publishedTo || null,
         sort,
         limit,
+      }, controller.signal, (progress) => {
+        if (controller.signal.aborted) return;
+        if (progress.data.stage) setSearchStage(progress.data.stage);
+        if (progress.event === "token" && progress.data.text) {
+          setPlanningOutput((current) => current + progress.data.text);
+        }
       });
       if (controller.signal.aborted) return;
       setResearch(result);
@@ -96,9 +112,14 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
 
   async function generateReport(result: ResearchSearch, controller: AbortController) {
     setAnalyzing(true);
+    setStopped(false);
+    setReportOutput("");
     try {
       for await (const event of analyzeResearch(result.id, controller.signal)) {
         if (controller.signal.aborted) return;
+        if (event.event === "token" && event.data.text) {
+          setReportOutput((current) => current + event.data.text);
+        }
         if (event.event === "done" && event.data.report) {
           setResearch((current) =>
             current ? { ...current, report: event.data.report ?? null, status: "complete" } : current,
@@ -106,7 +127,9 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
           refreshHistory();
         }
         if (event.event === "error") {
-          throw new Error(event.data.message ?? tr("The research report could not be generated", "无法生成研究报告"));
+          throw new Error(event.data.code === "model_output_limit"
+            ? tr("The model exhausted its output budget. Increase LLM_MAX_OUTPUT_TOKENS in Settings and retry.", "模型输出预算已耗尽，请在设置中调高 LLM_MAX_OUTPUT_TOKENS 后重试。推理模型可能在输出正文前用完预算。")
+            : event.data.message ?? tr("The research report could not be generated", "无法生成研究报告"));
         }
       }
     } finally {
@@ -116,6 +139,9 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
 
   const restoreResearch = useCallback((item: ResearchSearch) => {
     abortRef.current?.abort();
+    setPlanningOutput("");
+    setReportOutput("");
+    setStopped(false);
     setResearch(item);
     setTopic(item.topic);
     setCategories(item.filters.categories ?? []);
@@ -153,6 +179,14 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
     catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : tr("Could not generate report", "无法生成报告"));
     }
+  }
+
+  function stopGeneration() {
+    abortRef.current?.abort();
+    setSearching(false);
+    setAnalyzing(false);
+    setStopped(true);
+    refreshHistory();
   }
 
   async function openPaper(paper: ArxivSearchPaper) {
@@ -195,9 +229,10 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
           <div className="research-composer-tools">
             <span className="composer-source"><Search size={15} /> arXiv <span>{tr("Abstracts", "摘要探索")}</span></span>
             <button className={`filter-toggle${filtersOpen ? " active" : ""}`} type="button" aria-expanded={filtersOpen} aria-controls="research-filters" onClick={() => setFiltersOpen((value) => !value)}><SlidersHorizontal size={14} />{tr("Filters", "筛选")}<span>{limit}</span></button>
-            <button className="send-button" type="submit" disabled={!topic.trim() || searching || analyzing} aria-label={searching ? tr("Scanning arXiv", "正在检索 arXiv") : tr("Explore topic", "探索话题")}>
-              {searching || analyzing ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />}
-            </button>
+            {searching || analyzing
+              ? <button key="stop" className="send-button" type="button" onClick={(event) => { event.preventDefault(); stopGeneration(); }} aria-label={tr("Stop generation", "停止生成")}><Square size={15} fill="currentColor" /></button>
+              : <button key="submit" className="send-button" type="submit" disabled={!topic.trim()} aria-label={tr("Explore topic", "探索话题")}><ArrowUp size={18} /></button>}
+
           </div>
           <fieldset className="filter-fieldset" id="research-filters" hidden={!filtersOpen} disabled={searching || analyzing}>
           <div className="research-filter-row">
@@ -248,13 +283,19 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
 
         {(error || restoreFailed) && <div className="research-error" role="alert"><TriangleAlert size={17} /> {error ?? tr("Could not load this exploration", "无法加载这次探索")}</div>}
 
-        {!research && !searching && !restoring && <div className="starter-suggestions topic-suggestions">
+        {!research && !searching && !restoring && !planningOutput && <div className="starter-suggestions topic-suggestions">
           <span>{tr("Try a topic", "试着探索")}</span>
           {[tr("Retrieval augmented generation", "检索增强生成"), tr("Embodied intelligence", "具身智能"), tr("Multimodal learning", "多模态学习")].map((suggestion) => <button key={suggestion} type="button" onClick={() => { setTopic(suggestion); document.getElementById("research-topic")?.focus(); }}>{suggestion}<span>↗</span></button>)}
         </div>}
         {restoring && <ResearchLoading label={tr("Opening your saved exploration", "正在打开已保存的探索")} />}
 
-        {searching && <ResearchLoading label={tr("Resolving topic and collecting the arXiv record", "正在解析主题并收集 arXiv 记录")} />}
+        {stopped && <p className="stream-notice" role="status">{tr("Generation stopped. The draft has not been saved as a report.", "已停止生成，当前草稿未保存为正式报告。")}</p>}
+        {searching && <ResearchLoading label={searchStage === "searching"
+          ? tr("Collecting matching papers from arXiv", "正在从 arXiv 收集匹配论文")
+          : tr("Preparing search phrases; text will appear as it arrives", "正在准备检索词，收到内容后会实时显示")} />}
+        {!research && planningOutput && <div className="stream-search-terms" aria-label={tr("Generated search phrases", "生成的检索词")}>
+          {researchPreview(planningOutput, true).map((part, index) => <span key={index}>{part.text}</span>)}
+        </div>}
 
         {research && (
           <section className="research-workspace">
@@ -303,7 +344,15 @@ export function ResearchDesk({ searchId }: { searchId?: string }) {
                 <div><span>{tr("Synthesis", "综合分析")} / AI</span><h2>{tr("Field brief", "领域简报")}</h2></div>
                 <i className={analyzing ? "active" : ""} />
               </div>
-              {analyzing && <ResearchLoading compact label={tr("Reading the abstract set and testing patterns", "正在阅读摘要并分析共性模式")} />}
+              {analyzing && !reportOutput && <ResearchLoading compact label={tr("Waiting for the model; the report will appear here as it arrives", "正在等待模型输出，报告将逐步显示在这里")} />}
+              {!research.report && reportOutput && <div className="report-content report-draft" aria-label={tr("Report draft", "报告草稿")}>
+                <p className="stream-notice" role="status">{analyzing
+                  ? tr("Generating · draft, awaiting validation", "正在生成 · 草稿待校验")
+                  : tr("Incomplete draft · generate again to finish", "未完成草稿 · 可重新生成")}</p>
+                {researchPreview(reportOutput).map((part, index) => ["name", "title", "period"].includes(part.key)
+                  ? <h3 key={index}>{part.text}</h3>
+                  : <p key={index}>{part.text}</p>)}
+              </div>}
               {research.report && <ReportView report={research.report} />}
               {!research.report && !analyzing && <div className="report-pending"><p>{tr("Your source papers are ready. Generate a report to explore the findings.", "来源论文已就绪，生成报告以查看研究结论。")}</p><button type="button" onClick={() => void retryReport()}>{tr("Generate report", "生成报告")}</button></div>}
             </aside>

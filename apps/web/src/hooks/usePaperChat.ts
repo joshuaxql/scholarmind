@@ -105,7 +105,9 @@ export function usePaperChat(paperId: string) {
           body: JSON.stringify({ query: trimmed, conversation_id: conversationId.current }),
           signal: abortController.current.signal,
         });
+        let completed = false;
         for await (const event of readServerEvents(response)) {
+          if (event.event === "done") { completed = true; break; }
           if (event.event === "meta") {
             const meta = event.data as MetaEvent;
             conversationId.current = meta.conversation_id;
@@ -131,6 +133,7 @@ export function usePaperChat(paperId: string) {
             throw new Error(streamError.message);
           }
         }
+        if (!completed) throw new Error("The answer stream ended before completion. Please retry.");
         setMessages((current) =>
           current.map((message) =>
             message.id === assistantId ? { ...message, pending: false } : message,

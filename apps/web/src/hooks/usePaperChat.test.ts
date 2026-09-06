@@ -1,5 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteConversation, getConversation, listConversations } from "@/lib/api";
 import { usePaperChat } from "@/hooks/usePaperChat";
 import type { Conversation, ConversationCollection } from "@/types/api";
@@ -7,6 +7,8 @@ import type { Conversation, ConversationCollection } from "@/types/api";
 vi.mock("@/lib/api", () => ({ deleteConversation: vi.fn(), getConversation: vi.fn(), listConversations: vi.fn() }));
 const conversation: Conversation = { id: "chat-1", paper_id: "paper-1", title: "Question", messages: [{ id: "message-1", role: "user", content: "Question" }], created_at: "2026-09-05", updated_at: "2026-09-05" };
 const collection: ConversationCollection = { items: [conversation], total: 1, limit: 50, offset: 0 };
+
+afterEach(() => vi.unstubAllGlobals());
 
 describe("conversation deletion", () => {
   beforeEach(() => {
@@ -46,4 +48,14 @@ describe("conversation deletion", () => {
     expect(result.current.messages).toEqual([]);
     expect(result.current.activeConversationId).toBeNull();
   });
+  it("reports abrupt EOF while retaining the visible answer", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response('event: token\ndata: {"text":"Partial answer"}\n\n')));
+    const { result } = renderHook(() => usePaperChat("paper-1"));
+    await waitFor(() => expect(result.current.historyLoading).toBe(false));
+    await act(() => result.current.send("Question"));
+    expect(result.current.error).toContain("before completion");
+    expect(result.current.messages.at(-1)?.content).toBe("Partial answer");
+    expect(result.current.streaming).toBe(false);
+  });
+
 });

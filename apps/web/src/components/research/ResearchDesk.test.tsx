@@ -84,6 +84,7 @@ describe("ResearchDesk", () => {
 
     await waitFor(() => expect(mockedSearch).toHaveBeenCalledWith(
       expect.objectContaining({ topic: "multimodal RAG", categories: ["cs.AI"], limit: 20 }),
+      expect.any(AbortSignal), expect.any(Function),
     ));
     expect(await screen.findByText("A grounded multimodal system")).toBeInTheDocument();
     expect(screen.getByText("The field is moving toward grounded multimodal evidence.")).toBeInTheDocument();
@@ -109,6 +110,50 @@ describe("ResearchDesk", () => {
     expect(await screen.findByText(result.report!.overview)).toBeInTheDocument();
     expect(analyzeResearch).toHaveBeenCalledWith("research-1", expect.any(AbortSignal));
     expect(mockedSearch).not.toHaveBeenCalled();
+  });
+
+  it("renders model text before completion and preserves an interrupted draft", async () => {
+    mockedGetResearch.mockResolvedValue({ ...result, report: null, status: "searched" });
+    vi.mocked(analyzeResearch).mockImplementation(async function* (_id, signal) {
+      yield { event: "token", data: { text: '{"overview":"Visible before completion' } };
+      await new Promise<void>((resolve) => signal!.addEventListener("abort", () => resolve(), { once: true }));
+    });
+    render(<ResearchDesk searchId="research-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Generate report" }));
+    expect(await screen.findByText("Visible before completion")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "[P1]" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Stop generation" }));
+    expect(vi.mocked(analyzeResearch).mock.calls[0][1]!.aborted).toBe(true);
+    expect(await screen.findByRole("button", { name: "Generate report" })).toBeEnabled();
+    expect(screen.getByText("Visible before completion")).toBeInTheDocument();
+    expect(screen.getByText(/Incomplete draft/)).toBeInTheDocument();
+    expect(mockedSearch).not.toHaveBeenCalled();
+  });
+
+  it("streams search phrases and cancels topic preparation", async () => {
+    mockedSearch.mockImplementation(async (_input, signal, progress) => {
+      progress?.({ event: "token", data: { stage: "planning", text: '{"terms":["embodied planning' } });
+      return new Promise((_resolve, reject) => signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))));
+    });
+    render(<ResearchDesk />);
+    fireEvent.change(screen.getByLabelText("Research topic"), { target: { value: "Embodied" } });
+    fireEvent.click(screen.getByRole("button", { name: "Explore topic" }));
+    expect(await screen.findByText("embodied planning")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Stop generation" }));
+    expect(mockedSearch.mock.calls[0][1]!.aborted).toBe(true);
+    expect(screen.getByRole("button", { name: "Explore topic" })).toBeEnabled();
+  });
+
+  it("explains an exhausted model budget without treating it as a completed report", async () => {
+    mockedGetResearch.mockResolvedValue({ ...result, report: null, status: "searched" });
+    vi.mocked(analyzeResearch).mockImplementation(async function* () {
+      yield { event: "error", data: { code: "model_output_limit", message: "Length limit" } };
+    });
+    render(<ResearchDesk searchId="research-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Generate report" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("LLM_MAX_OUTPUT_TOKENS");
+    expect(screen.getByRole("button", { name: "Generate report" })).toBeEnabled();
+    expect(screen.queryByText(result.report!.overview)).not.toBeInTheDocument();
   });
 
   it("keeps a changed topic when switching interface language", async () => {

@@ -6,10 +6,12 @@ from collections import Counter
 from typing import Any, Literal, Protocol, cast
 
 import httpx
+import structlog
 from pydantic import BaseModel, Field, ValidationError
 
 from scholarmind.core.config import Settings
 from scholarmind.domain.errors import DomainError
+from scholarmind.services.llm_stream import ModelStreamError, TokenCallback, stream_completion
 
 _CJK = re.compile(r"[\u3400-\u9fff]")
 
@@ -49,18 +51,19 @@ class ResearchReport(BaseModel):
 
 
 class ResearchAnalyzer(Protocol):
-    async def plan_terms(self, topic: str) -> list[str]: ...
+    async def plan_terms(self, topic: str, on_token: TokenCallback | None = None) -> list[str]: ...
 
     async def analyze(
         self,
         topic: str,
         query_expression: str,
         papers: list[dict[str, Any]],
+        on_token: TokenCallback | None = None,
     ) -> ResearchReport: ...
 
 
 class LocalResearchAnalyzer:
-    async def plan_terms(self, topic: str) -> list[str]:
+    async def plan_terms(self, topic: str, on_token: TokenCallback | None = None) -> list[str]:
         return [topic]
 
     async def analyze(
@@ -68,6 +71,7 @@ class LocalResearchAnalyzer:
         topic: str,
         query_expression: str,
         papers: list[dict[str, Any]],
+        on_token: TokenCallback | None = None,
     ) -> ResearchReport:
         del query_expression
         if not papers:
@@ -146,7 +150,7 @@ class OpenAIResearchAnalyzer:
         self.max_tokens = settings.llm_max_output_tokens
         self.context_budget = settings.research_max_context_characters
 
-    async def plan_terms(self, topic: str) -> list[str]:
+    async def plan_terms(self, topic: str, on_token: TokenCallback | None = None) -> list[str]:
         if not _CJK.search(topic):
             return [topic]
         payload = await self._complete(
@@ -154,7 +158,8 @@ class OpenAIResearchAnalyzer:
             'Return JSON only, with schema {"terms":["phrase"]}. Return 2 to 4 phrases. '
             "Do not include arXiv query operators, category filters, explanations, or citations.",
             f"Research topic: {topic}",
-            max_tokens=500,
+            max_tokens=self.max_tokens,
+            on_token=on_token,
         )
         try:
             parsed = _json_object(payload)
@@ -172,6 +177,7 @@ class OpenAIResearchAnalyzer:
         topic: str,
         query_expression: str,
         papers: list[dict[str, Any]],
+        on_token: TokenCallback | None = None,
     ) -> ResearchReport:
         context = _paper_context(papers, self.context_budget)
         language = "Chinese" if _CJK.search(topic) else "the same language as the topic"
@@ -202,6 +208,7 @@ Keep the report concise: 2-6 themes, 2-8 timeline items, 2-6 bottlenecks, and 2-
                 "</paper_records>"
             ),
             max_tokens=self.max_tokens,
+            on_token=on_token,
         )
         try:
             report = ResearchReport.model_validate(_json_object(content))
@@ -210,32 +217,45 @@ Keep the report concise: 2-6 themes, 2-8 timeline items, 2-6 bottlenecks, and 2-
         except (ValidationError, ValueError, TypeError) as exc:
             raise _analysis_error("The model returned an invalid research report") from exc
 
-    async def _complete(self, system: str, user: str, *, max_tokens: int) -> str:
+    async def _complete(
+        self,
+        system: str,
+        user: str,
+        *,
+        max_tokens: int,
+        on_token: TokenCallback | None = None,
+    ) -> str:
+        parts: list[str] = []
         try:
-            response = await self.client.post(
+            async for token in stream_completion(
+                self.client,
                 self.endpoint,
-                headers={"Authorization": f"Bearer {self.api_key}"},
-                json={
+                self.api_key,
+                {
                     "model": self.model,
                     "messages": [
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
                     ],
-                    "stream": False,
                     "temperature": self.temperature,
                     "max_tokens": max_tokens,
                 },
+            ):
+                parts.append(token)
+                if on_token is not None:
+                    await on_token(token)
+            return "".join(parts)
+        except ModelStreamError as exc:
+            raise DomainError(code=exc.code, message=str(exc), status_code=502) from exc
+        except (httpx.HTTPError, ValueError, RuntimeError) as exc:
+            structlog.get_logger(__name__).warning(
+                "research_model_stream_failed",
+                error_type=type(exc).__name__,
+                upstream_status=(
+                    exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else None
+                ),
             )
-            response.raise_for_status()
-            payload = response.json()
-            choices = payload.get("choices") if isinstance(payload, dict) else None
-            message = choices[0].get("message") if isinstance(choices, list) and choices else None
-            content = message.get("content") if isinstance(message, dict) else None
-            if not isinstance(content, str) or not content.strip():
-                raise ValueError("missing message content")
-            return content
-        except (httpx.HTTPError, json.JSONDecodeError, ValueError, KeyError) as exc:
-            raise _analysis_error("The language model request could not be completed") from exc
+            raise _analysis_error("The language model stream was interrupted or invalid") from exc
 
 
 def build_research_analyzer(

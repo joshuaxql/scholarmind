@@ -190,9 +190,12 @@ export interface ResearchCollection {
 }
 
 export interface ResearchAnalysisEvent {
-  event: "meta" | "done" | "error";
+  event: "meta" | "token" | "done" | "error";
   data: {
     search_id?: string;
+    text?: string;
+    terms?: string[];
+    search?: ResearchSearch;
     stage?: string;
     report?: ResearchReport;
     code?: string;

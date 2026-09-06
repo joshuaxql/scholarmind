@@ -16,7 +16,7 @@ export async function* readServerEvents(response: Response): AsyncGenerator<Serv
   try {
     while (true) {
       const { value, done } = await reader.read();
-      buffer += decoder.decode(value, { stream: !done }).replaceAll("\r\n", "\n");
+      buffer = (buffer + decoder.decode(value, { stream: !done })).replaceAll("\r\n", "\n");
       let boundary = buffer.indexOf("\n\n");
       while (boundary >= 0) {
         const block = buffer.slice(0, boundary);
@@ -30,6 +30,7 @@ export async function* readServerEvents(response: Response): AsyncGenerator<Serv
     const trailing = parseBlock(buffer.trim());
     if (trailing) yield trailing;
   } finally {
+    await reader.cancel().catch(() => {});
     reader.releaseLock();
   }
 }

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import Awaitable, Callable
 from typing import Annotated
 from uuid import UUID
 
-import orjson
-import structlog
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
 
@@ -16,7 +14,9 @@ from scholarmind.api.schemas import (
     ResearchReportResponse,
     ResearchSearchRequest,
     ResearchSearchResponse,
+    ResearchTokenEvent,
 )
+from scholarmind.api.streaming import EventSink, keep_alive, operation_events
 from scholarmind.core.security import Principal, get_current_principal
 from scholarmind.db.models import ResearchSearch
 from scholarmind.domain.errors import DomainError
@@ -24,7 +24,6 @@ from scholarmind.services.research import ResearchService
 
 router = APIRouter(prefix="/research", tags=["research"])
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
-logger = structlog.get_logger(__name__)
 _SEARCH_REQUEST_TIMEOUT_SECONDS = 110.0
 
 
@@ -53,6 +52,35 @@ async def search_research(
             status_code=504,
         ) from exc
     return _response(search, cached=cached)
+
+
+@router.post("/search/stream")
+async def stream_research_search(
+    payload: ResearchSearchRequest,
+    request: Request,
+    principal: CurrentPrincipal,
+) -> StreamingResponse:
+    async def search(emit: EventSink) -> object:
+        async def token(text: str) -> None:
+            await emit("token", ResearchTokenEvent(text=text, stage="planning").model_dump())
+
+        async def searching(terms: list[str]) -> None:
+            await emit("meta", {"stage": "searching", "terms": terms})
+
+        result, cached = await _service(request).search(
+            principal.subject,
+            payload.topic,
+            payload.categories,
+            payload.published_from,
+            payload.published_to,
+            payload.sort,
+            payload.limit,
+            on_token=token,
+            on_searching=searching,
+        )
+        return {"search": _response(result, cached=cached).model_dump(mode="json")}
+
+    return _stream(search, {"stage": "planning"})
 
 
 @router.get("", response_model=ResearchCollectionResponse)
@@ -100,45 +128,28 @@ async def analyze_research(
     service = _service(request)
     await service.get(principal.subject, search_id)
 
-    async def events() -> AsyncIterator[bytes]:
-        yield _event("meta", {"search_id": str(search_id), "stage": "analyzing"})
-        try:
-            report = await service.analyze(principal.subject, search_id)
-            if not await request.is_disconnected():
-                yield _event(
-                    "done",
-                    {"report": report.model_dump(mode="json"), "stage": "complete"},
-                )
-        except asyncio.CancelledError:
-            raise
-        except DomainError as exc:
-            logger.warning(
-                "research_analysis_failed",
-                search_id=str(search_id),
-                error_code=exc.code,
-            )
-            yield _event("error", {"code": exc.code, "message": exc.message})
-        except Exception as exc:
-            logger.exception(
-                "research_analysis_failed",
-                search_id=str(search_id),
-                error_type=type(exc).__name__,
-            )
-            yield _event(
-                "error",
-                {
-                    "code": "research_analysis_failed",
-                    "message": "The research report could not be generated",
-                },
-            )
+    async def generate(emit: EventSink) -> object:
+        async def token(text: str) -> None:
+            await emit("token", ResearchTokenEvent(text=text, stage="analyzing").model_dump())
 
+        report = await service.analyze(principal.subject, search_id, on_token=token)
+        return {"report": report.model_dump(mode="json"), "stage": "complete"}
+
+    return _stream(generate, {"search_id": str(search_id), "stage": "analyzing"})
+
+
+def _stream(
+    operation: Callable[[EventSink], Awaitable[object]],
+    initial: object,
+    *,
+    timeout: float = 600.0,
+) -> StreamingResponse:
     return StreamingResponse(
-        events(),
+        keep_alive(operation_events(operation, initial, duration=timeout)),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",
             "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
         },
     )
 
@@ -172,7 +183,3 @@ def _response(search: ResearchSearch, *, cached: bool = False) -> ResearchSearch
         updated_at=search.updated_at,
         cached=cached,
     )
-
-
-def _event(name: str, data: object) -> bytes:
-    return b"event: " + name.encode() + b"\ndata: " + orjson.dumps(data) + b"\n\n"

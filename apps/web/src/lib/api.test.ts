@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createPaper, deleteConversation, deleteResearch, paperPdfUrl, removePaperHistory } from "@/lib/api";
+import { analyzeResearch, searchResearch, createPaper, deleteConversation, deleteResearch, paperPdfUrl, removePaperHistory } from "@/lib/api";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -51,4 +51,21 @@ describe("web API client", () => {
       }),
     );
   });
+});
+
+it("rejects a report stream that ends after partial tokens", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response('event: token\ndata: {"text":"partial"}\n\n')));
+  const stream = analyzeResearch("test");
+  expect((await stream.next()).value).toMatchObject({ event: "token" });
+  await expect(stream.next()).rejects.toThrow("before completion");
+});
+
+it("forwards search progress before accepting the terminal result", async () => {
+  const progress = vi.fn();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+    'event: token\ndata: {"text":"first","stage":"planning"}\n\nevent: done\ndata: {"search":{"id":"test"}}\n\n',
+  )));
+  const input = { topic: "topic", categories: [], published_from: null, published_to: null, sort: "relevance" as const, limit: 10 };
+  expect(await searchResearch(input, undefined, progress)).toEqual({ id: "test" });
+  expect(progress).toHaveBeenCalledWith({ event: "token", data: { text: "first", stage: "planning" } });
 });

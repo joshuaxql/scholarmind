@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -201,6 +201,11 @@ class ResearchCollectionResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class ResearchTokenEvent(BaseModel):
+    text: str
+    stage: Literal["planning", "analyzing"]
 
 
 class ChatRequest(BaseModel):

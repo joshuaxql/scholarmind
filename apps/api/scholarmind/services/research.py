@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
+from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, cast
 from uuid import UUID
 
+import anyio
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -13,6 +16,7 @@ from scholarmind.db.models import ResearchSearch
 from scholarmind.domain.errors import ConflictError, DomainError, NotFoundError
 from scholarmind.domain.research import ResearchSort, ResearchStatus
 from scholarmind.services.arxiv_search import ArxivSearchClient, build_query_expression
+from scholarmind.services.llm_stream import TokenCallback
 from scholarmind.services.research_analysis import ResearchAnalyzer, ResearchReport
 
 
@@ -38,6 +42,8 @@ class ResearchService:
         published_to: date | None,
         sort: ResearchSort,
         limit: int,
+        on_token: TokenCallback | None = None,
+        on_searching: Callable[[list[str]], Awaitable[None]] | None = None,
     ) -> tuple[ResearchSearch, bool]:
         request_key = _request_key(
             topic,
@@ -51,7 +57,13 @@ class ResearchService:
         if cached is not None:
             return cached, True
 
-        terms = await self.analyzer.plan_terms(topic)
+        terms = (
+            await self.analyzer.plan_terms(topic, on_token=on_token)
+            if on_token is not None
+            else await self.analyzer.plan_terms(topic)
+        )
+        if on_searching is not None:
+            await on_searching(terms)
         query_expression = build_query_expression(
             terms,
             categories,
@@ -150,7 +162,12 @@ class ResearchService:
             await session.delete(search)
             await session.commit()
 
-    async def analyze(self, owner_id: str, search_id: UUID) -> ResearchReport:
+    async def analyze(
+        self,
+        owner_id: str,
+        search_id: UUID,
+        on_token: TokenCallback | None = None,
+    ) -> ResearchReport:
         async with self.sessions() as session:
             search = await _owned_search(session, owner_id, search_id)
             if search is None:
@@ -171,21 +188,38 @@ class ResearchService:
             await session.commit()
 
         try:
-            report = await self.analyzer.analyze(topic, query_expression, papers)
+            report = await self.analyzer.analyze(
+                topic,
+                query_expression,
+                papers,
+                on_token=on_token,
+            )
+            async with self.sessions() as session:
+                search = await _owned_search(session, owner_id, search_id)
+                if search is None:
+                    raise NotFoundError("research search", str(search_id))
+                search.report = report.model_dump(mode="json")
+                search.status = ResearchStatus.COMPLETE
+                search.error_code = None
+                search.error_message = None
+                await session.commit()
+            return report
+
+        except asyncio.CancelledError:
+            with anyio.CancelScope(shield=True):
+                await self._record_analysis_failure(
+                    owner_id,
+                    search_id,
+                    DomainError(
+                        code="research_analysis_cancelled",
+                        message="Report generation was interrupted; please retry",
+                        status_code=409,
+                    ),
+                )
+            raise
         except Exception as exc:
             await self._record_analysis_failure(owner_id, search_id, exc)
             raise
-
-        async with self.sessions() as session:
-            search = await _owned_search(session, owner_id, search_id)
-            if search is None:
-                raise NotFoundError("research search", str(search_id))
-            search.report = report.model_dump(mode="json")
-            search.status = ResearchStatus.COMPLETE
-            search.error_code = None
-            search.error_message = None
-            await session.commit()
-        return report
 
     async def _cached(self, owner_id: str, request_key: str) -> ResearchSearch | None:
         if self.cache_ttl_seconds == 0:

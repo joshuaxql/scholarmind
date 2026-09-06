@@ -187,6 +187,15 @@ Authorization: Bearer <API_BEARER_TOKEN>
 | POST | `/research/search` | 按主题、分类和日期检索 arXiv 摘要 |
 | GET | `/research`、`/research/{id}` | 调研历史与结果快照 |
 | DELETE | `/research/{id}` | 删除调研记录、结果快照和报告 |
+| POST | `/research/search/stream` | 流式准备检索词并搜索 arXiv |
 | POST | `/research/{id}/analyze/stream` | SSE 生成领域进展与瓶颈报告 |
 
-单篇问答 SSE 事件依次为 `meta`、多个 `token`、`done`；领域分析返回 `meta`、`done`。流开始后的失败均使用 `error`。
+单篇问答与领域分析 SSE 均使用 `meta`、多个 `token`、`done`；流开始后的失败使用 `error`，连接中途结束不代表生成成功。所有生成模型调用（包括中文检索词准备）均发送 `stream=true`，只转发正文 `delta.content`，不展示模型内部推理字段。嵌入 API 仍使用其标准 JSON 协议。
+
+话题探索页面调用 `/research/search/stream`：`meta.stage` 为 `planning` / `searching`；检索词的 `token` 携带 `{text, stage: "planning"}`；`done.search` 是完整检索结果。报告接口的 `token` 携带 `{text, stage: "analyzing"}`，前端将部分 JSON 中的正文显示为草稿；只有完整结构和 `P1..Pn` 引用校验通过并保存后，才发送 `done.report`。原 `/research/search` JSON 接口保持兼容。
+
+SSE 等待期间每 10 秒发送注释心跳，Next BFF 关闭缓冲，收到响应头后以 180 秒无数据作为流式超时；普通请求保留 130 秒截止时间。流式话题检索、报告和单篇模型生成最多 600 秒，原 JSON 检索接口保留 110 秒上限；模型 HTTP 客户端仍限制 120 秒未收到上游数据。点击停止或离开页面会把取消信号传递到 API 和模型请求，取消报告标记为可重试的失败状态，未完成报告不持久化。页面保留当前草稿，重新生成会清空旧草稿。
+
+模型返回 `finish_reason=length` 时使用 `model_output_limit` 错误，提示调高设置中的 `LLM_MAX_OUTPUT_TOKENS`；检索词准备同样遵守该配置。推理模型可能在输出正文之前消耗此预算。
+
+499 通常表示调用方或中间代理提前关闭连接。流式传输与心跳可减少等待期间被误判为空闲的问题，但无法保证模型供应商不再返回 499；仍应结合供应商和反向代理日志确认断开的具体环节。

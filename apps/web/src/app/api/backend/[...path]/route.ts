@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { fetchBackend } from "@/lib/backend-stream";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,13 +72,13 @@ async function proxy(request: NextRequest, context: RouteContext): Promise<Respo
   }
 
   try {
-    const upstream = await fetch(upstreamUrl, {
+    const upstream = await fetchBackend(upstreamUrl, {
       method: request.method,
       headers,
       body,
       cache: "no-store",
       redirect: "follow",
-      signal: AbortSignal.timeout(130_000),
+      signal: request.signal,
     });
     const responseHeaders = new Headers();
     for (const name of ["content-type", "content-disposition", "cache-control", "x-request-id"]) {

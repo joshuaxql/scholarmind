@@ -460,3 +460,12 @@ input,textarea,select { min-width:0; }
 @media (max-width:1100px) { .settings-page { padding:32px 32px 0; } .settings-layout { grid-template-columns:155px minmax(0,1fr); gap:22px; } .setting-row { grid-template-columns:1fr; gap:12px; } .setting-switch { justify-self:start; } }
 @media (max-width:760px) { .settings-page { padding:24px 20px 0; } .settings-heading { margin-bottom:22px; } .settings-layout { display:block; } .settings-nav { display:flex; position:static; overflow-x:auto; gap:5px; margin:0 -20px 21px; padding:0 20px 8px; scrollbar-width:thin; } .settings-nav>button { width:auto; flex-shrink:0; padding:9px 11px; font-size:11px; } .settings-nav>p { display:none; } .setting-row { padding:18px 0; } .setting-undo { top:19px; right:0; } .settings-savebar { gap:8px; } .settings-savebar>span { max-width:115px; line-height:1.7; } .settings-primary,.settings-secondary { padding:9px 11px; } }
 @media (prefers-reduced-motion:reduce) { .settings-spinner { animation:none; } .setting-switch span { transition:none; } }
+
+/* Live model output shares the final report typography. */
+.stream-notice { color: var(--text-muted, #777); font-size: 12px; line-height: 1.7; }
+.stream-search-terms { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 28px; }
+.stream-search-terms span { border: 1px solid var(--border, #ddd); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+.report-draft { overflow-wrap: anywhere; }
+.report-draft p { white-space: pre-wrap; line-height: 1.85; }
+.report-draft h3 { margin-top: 24px; font-size: 14px; }
+.report-draft .stream-notice { margin-bottom: 20px; }

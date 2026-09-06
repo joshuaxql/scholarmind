@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from time import perf_counter
 from typing import Annotated
 from uuid import UUID
@@ -16,9 +16,11 @@ from scholarmind.api.schemas import (
     ConversationCollectionResponse,
     ConversationResponse,
 )
+from scholarmind.api.streaming import keep_alive
 from scholarmind.core.metrics import CHAT_DURATION, CHAT_GENERATIONS
 from scholarmind.core.security import Principal, get_current_principal
 from scholarmind.services.chat import ChatService
+from scholarmind.services.llm_stream import ModelStreamError
 
 router = APIRouter(prefix="/papers/{paper_id}", tags=["chat"])
 CurrentPrincipal = Annotated[Principal, Depends(get_current_principal)]
@@ -49,7 +51,7 @@ async def stream_chat(
         payload.conversation_id,
     )
 
-    async def events() -> AsyncIterator[bytes]:
+    async def events() -> AsyncGenerator[bytes, None]:
         answer_parts: list[str] = []
         started_at = perf_counter()
         disconnected = False
@@ -61,16 +63,17 @@ async def stream_chat(
             },
         )
         try:
-            async for token in service.llm.stream(
-                prepared.question,
-                prepared.context,
-                prepared.history,
-            ):
-                if await request.is_disconnected():
-                    disconnected = True
-                    break
-                answer_parts.append(token)
-                yield _event("token", {"text": token})
+            async with asyncio.timeout(600):
+                async for token in service.llm.stream(
+                    prepared.question,
+                    prepared.context,
+                    prepared.history,
+                ):
+                    if await request.is_disconnected():
+                        disconnected = True
+                        break
+                    answer_parts.append(token)
+                    yield _event("token", {"text": token})
             answer = "".join(answer_parts)
             await service.save_assistant(prepared, answer)
             result = "cancelled" if disconnected else "succeeded"
@@ -90,11 +93,16 @@ async def stream_chat(
             CHAT_DURATION.observe(perf_counter() - started_at)
             yield _event(
                 "error",
-                {"code": "generation_failed", "message": "The answer could not be generated"},
+                {
+                    "code": exc.code if isinstance(exc, ModelStreamError) else "generation_failed",
+                    "message": str(exc)
+                    if isinstance(exc, ModelStreamError)
+                    else "The answer could not be generated",
+                },
             )
 
     return StreamingResponse(
-        events(),
+        keep_alive(events()),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",
